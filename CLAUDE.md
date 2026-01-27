@@ -29,6 +29,12 @@
 - 原文对照必须可追溯：至少包含 `filePath` + `标题路径` + `段落/行号范围`
 - Agent 输出尽量用结构化 JSON，解析失败最多重试 1 次（修复 JSON），不要无限重试
 
+## 文档设计阶段
+
+- 需求文档里不能有代码描述
+- 设计文档里不能有代码实现，允许有接口的代码签名描述
+- 设计文档里流程图/数据流图可以用 ASCII 艺术画（Markdown 代码块），但不能过多，要简洁明了
+
 ## .NET 编码规范（常用清单）
 
 - 启用 Nullable：`<Nullable>enable</Nullable>`
@@ -47,6 +53,3 @@ dotnet run --project src/<YourProject>
 dotnet format
 ```
 
-## 仓库现状
-
-`src/` 目前为空，先按文档驱动实现最小链路即可。
