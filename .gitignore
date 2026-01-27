@@ -11,6 +11,10 @@
 *.sln.docstates
 *.env
 
+# Third-party components (cloned locally, not versioned)
+third_party/**
+!third_party/README.md
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
@@ -416,3 +420,6 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+/docs/参考文档/*
+.claude/
