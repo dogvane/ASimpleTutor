@@ -6,6 +6,13 @@ using Swashbuckle.AspNetCore.SwaggerGen;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 加载本地覆盖配置（不提交 git）：
+// - appsettings.local.json
+// - appsettings.{Environment}.local.json
+builder.Configuration
+    .AddJsonFile("appsettings.local.json", optional: true, reloadOnChange: true)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.local.json", optional: true, reloadOnChange: true);
+
 // 加载配置
 var config = new AppConfig();
 builder.Configuration.GetSection("App").Bind(config);

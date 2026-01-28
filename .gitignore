@@ -11,6 +11,10 @@
 *.sln.docstates
 *.env
 
+# Local, unversioned configuration overrides
+**/appsettings.local.json
+**/appsettings.*.local.json
+
 # Third-party components (cloned locally, not versioned)
 third_party/**
 !third_party/README.md

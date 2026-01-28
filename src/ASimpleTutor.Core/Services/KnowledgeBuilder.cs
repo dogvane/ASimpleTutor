@@ -1,6 +1,7 @@
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 
 namespace ASimpleTutor.Core.Services;
 
@@ -63,6 +64,13 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                     ["filePath"] = doc.Path,
                     ["title"] = doc.Title
                 });
+
+                // 同时跟踪原文片段
+                await _sourceTracker.TrackAsync(doc.DocId, content, new Dictionary<string, object>
+                {
+                    ["filePath"] = doc.Path,
+                    ["title"] = doc.Title
+                });
             }
 
             // 3. 调用 LLM 提取知识点
@@ -104,6 +112,27 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         List<Document> documents,
         CancellationToken cancellationToken)
     {
+        // 获取文档的 chunk ID 列表
+        var documentChunkIds = documents.ToDictionary(
+            d => d.DocId,
+            d => d.DocId + "_chunk_0"
+        );
+
+        // 构建 chunk ID 列表说明
+        var chunkIdList = new System.Text.StringBuilder();
+        chunkIdList.AppendLine("可用原文片段 ID（chunk_id）：");
+        if (documentChunkIds.Count > 0)
+        {
+            foreach (var kv in documentChunkIds)
+            {
+                chunkIdList.AppendLine("  - " + kv.Key + " -> " + kv.Value);
+            }
+        }
+        else
+        {
+            chunkIdList.AppendLine("  - {docId}_chunk_0 (默认)");
+        }
+
         var systemPrompt = @"你是一个知识提取专家。你的任务是从文档中提取可学习的知识点。
 
 请以 JSON 格式输出，结构如下：
@@ -122,31 +151,47 @@ public class KnowledgeBuilder : IKnowledgeBuilder
   ]
 }
 
+" + chunkIdList.ToString() + @"
 知识点识别规则：
 1. 识别文档中的概念、术语、规则、步骤、API 等
-2. 每个知识点必须至少关联一个原文片段
+2. 每个知识点必须至少关联一个原文片段（使用上面的 chunk_id）
 3. importance 反映知识点的重要程度（核心概念=0.8+, 细节=0.5, 边缘=0.3）
-4. 尽量使用原文中的表述作为标题";
+4. 尽量使用原文中的表述作为标题
+5. snippet_ids 必须使用上述可用的 chunk_id 格式";
 
         var documentContent = string.Join("\n\n", documents.Select(d =>
             $"# {d.Title}\n{ReconstructDocumentContent(d)}"));
 
-        var response = await _llmService.ChatJsonAsync<KnowledgePointsResponse>(
-            systemPrompt,
-            $"请分析以下文档并提取知识点：\n\n{documentContent}",
-            cancellationToken);
+        _logger.LogInformation("文档总字符数: {CharCount}", documentContent.Length);
+        _logger.LogInformation("开始调用 LLM 提取知识点...");
 
-        var kpList = response?.KnowledgePoints ?? new List<KnowledgePoint>();
-
-        // 分配唯一 ID
-        var id = 0;
-        foreach (var kp in kpList)
+        try
         {
-            kp.KpId = $"kp_{id++:D4}";
-            kp.BookRootId = documents.FirstOrDefault()?.BookRootId ?? string.Empty;
-        }
+            var response = await _llmService.ChatJsonAsync<KnowledgePointsResponse>(
+                systemPrompt,
+                $"请分析以下文档并提取知识点：\n\n{documentContent}",
+                cancellationToken);
 
-        return kpList;
+            _logger.LogInformation("LLM 调用完成，提取到 {Count} 个知识点", response?.KnowledgePoints?.Count ?? 0);
+
+            // 将 DTO 转换为标准的 KnowledgePoint
+            var kpList = response?.KnowledgePoints?
+                .Select((kp, index) =>
+                {
+                    var kpModel = kp.ToKnowledgePoint();
+                    kpModel.KpId = $"kp_{index:D4}";
+                    kpModel.BookRootId = documents.FirstOrDefault()?.BookRootId ?? string.Empty;
+                    return kpModel;
+                })
+                .ToList() ?? new List<KnowledgePoint>();
+
+            return kpList;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "提取知识点失败");
+            return new List<KnowledgePoint>();
+        }
     }
 
     private string ReconstructDocumentContent(Document doc)
@@ -242,10 +287,56 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 }
 
 /// <summary>
-/// LLM 响应数据结构
+/// LLM 响应数据结构（用于接收 LLM 返回的 JSON）
 /// </summary>
 public class KnowledgePointsResponse
 {
+    [JsonProperty("schema_version")]
     public string? SchemaVersion { get; set; }
-    public List<KnowledgePoint> KnowledgePoints { get; set; } = new();
+
+    [JsonProperty("knowledge_points")]
+    public List<KnowledgePointDto> KnowledgePoints { get; set; } = new();
+}
+
+/// <summary>
+/// 知识点 DTO（从 LLM 接收）
+/// </summary>
+public class KnowledgePointDto
+{
+    [JsonProperty("kp_id")]
+    public string? KpId { get; set; }
+
+    [JsonProperty("title")]
+    public string? Title { get; set; }
+
+    [JsonProperty("aliases")]
+    public List<string>? Aliases { get; set; }
+
+    [JsonProperty("chapter_path")]
+    public List<string>? ChapterPath { get; set; } // LLM 返回数组格式
+
+    [JsonProperty("importance")]
+    public float Importance { get; set; }
+
+    [JsonProperty("snippet_ids")]
+    public List<string>? SnippetIds { get; set; }
+
+    [JsonProperty("summary")]
+    public string? Summary { get; set; }
+
+    /// <summary>
+    /// 转换为标准的 KnowledgePoint
+    /// </summary>
+    public KnowledgePoint ToKnowledgePoint()
+    {
+        return new KnowledgePoint
+        {
+            KpId = KpId ?? string.Empty,
+            Title = Title ?? string.Empty,
+            Aliases = Aliases ?? new List<string>(),
+            ChapterPath = ChapterPath ?? new List<string>(),
+            Importance = Importance,
+            SnippetIds = SnippetIds ?? new List<string>()
+        };
+    }
 }

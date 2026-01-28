@@ -1,8 +1,10 @@
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
 using Microsoft.Extensions.Logging;
+using OpenAI;
 using OpenAI.Chat;
 using Newtonsoft.Json;
+using System.ClientModel;
 
 namespace ASimpleTutor.Core.Services;
 
@@ -20,8 +22,21 @@ public class LLMService : ILLMService
         _model = model;
         _logger = logger;
 
-        // OpenAI SDK v2 使用 API 密钥直接构造
-        _client = new ChatClient(model, apiKey);
+        // 支持自定义 baseUrl（如 Ollama）
+        if (!string.IsNullOrEmpty(baseUrl) && !baseUrl.StartsWith("https://api.openai.com/v1"))
+        {
+            var credential = new ApiKeyCredential(apiKey);
+            var options = new OpenAIClientOptions { Endpoint = new Uri(baseUrl) };
+            var openAIClient = new OpenAIClient(credential, options);
+            _client = openAIClient.GetChatClient(model);
+            _logger.LogInformation("使用自定义 LLM 端点: {BaseUrl}, 模型: {Model}", baseUrl, model);
+        }
+        else
+        {
+            // 默认使用 OpenAI 官方 API
+            _client = new ChatClient(model, apiKey);
+            _logger.LogInformation("使用 OpenAI 官方 API，模型: {Model}", model);
+        }
     }
 
     public async Task<string> ChatAsync(string systemPrompt, string userMessage, CancellationToken cancellationToken = default)
@@ -51,43 +66,60 @@ public class LLMService : ILLMService
 
     public async Task<T> ChatJsonAsync<T>(string systemPrompt, string userMessage, CancellationToken cancellationToken = default) where T : class
     {
+        const int maxRetries = 2;
+        Exception? lastException = null;
+
         var jsonPrompt = $@"{systemPrompt}
 
 重要：你的响应必须是有效的 JSON 格式，不要包含任何其他文本或解释。";
 
-        var response = await ChatAsync(jsonPrompt, userMessage, cancellationToken);
-
-        // 尝试解析 JSON
-        try
+        for (int retry = 0; retry <= maxRetries; retry++)
         {
-            // 清理可能的 markdown 代码块标记
-            var cleanedResponse = response.Trim();
-            if (cleanedResponse.StartsWith("```json"))
+            try
             {
-                cleanedResponse = cleanedResponse.Substring(7);
-            }
-            if (cleanedResponse.StartsWith("```"))
-            {
-                cleanedResponse = cleanedResponse.Substring(3);
-            }
-            if (cleanedResponse.EndsWith("```"))
-            {
-                cleanedResponse = cleanedResponse.Substring(0, cleanedResponse.Length - 3);
-            }
+                var response = await ChatAsync(jsonPrompt, userMessage, cancellationToken);
 
-            cleanedResponse = cleanedResponse.Trim();
+                // 清理可能的 markdown 代码块标记
+                var cleanedResponse = response.Trim();
+                if (cleanedResponse.StartsWith("```json"))
+                {
+                    cleanedResponse = cleanedResponse.Substring(7);
+                }
+                if (cleanedResponse.StartsWith("```"))
+                {
+                    cleanedResponse = cleanedResponse.Substring(3);
+                }
+                if (cleanedResponse.EndsWith("```"))
+                {
+                    cleanedResponse = cleanedResponse.Substring(0, cleanedResponse.Length - 3);
+                }
 
-            return Newtonsoft.Json.JsonConvert.DeserializeObject<T>(cleanedResponse)
-                   ?? throw new InvalidOperationException("JSON 解析结果为空");
+                cleanedResponse = cleanedResponse.Trim();
+
+                // 记录原始响应（始终记录，用于调试）
+                var displayResponse = cleanedResponse.Length > 1000 ? cleanedResponse.Substring(0, 1000) + "..." : cleanedResponse;
+                _logger.LogInformation("LLM 原始响应: {Response}", displayResponse);
+
+                var result = Newtonsoft.Json.JsonConvert.DeserializeObject<T>(cleanedResponse)
+                           ?? throw new InvalidOperationException("JSON 解析结果为空");
+
+                // 记录解析结果
+                _logger.LogInformation("JSON 解析成功，类型: {Type}", typeof(T).Name);
+                return result;
+            }
+            catch (Exception ex) when (retry < maxRetries)
+            {
+                lastException = ex;
+                _logger.LogWarning(ex, "JSON 解析失败，第 {Retry} 次重试 (共 {MaxRetries} 次)", retry + 1, maxRetries);
+            }
         }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "JSON 解析失败，尝试使用降级策略");
 
-            // 降级：尝试从文本中提取 JSON
-            var fallbackResponse = CreateFallbackResponse<T>();
-            return fallbackResponse;
-        }
+        // 所有重试都失败，记录原始响应并抛出异常
+        _logger.LogError(lastException, "JSON 解析重试失败，不再重试");
+
+        // 降级：尝试从文本中提取 JSON
+        var fallbackResponse = CreateFallbackResponse<T>();
+        return fallbackResponse;
     }
 
     private static T CreateFallbackResponse<T>() where T : class
@@ -118,6 +150,18 @@ public class LLMService : ILLMService
         if (typeof(T) == typeof(List<Exercise>))
         {
             return new List<Exercise>() as T ?? throw new InvalidOperationException();
+        }
+
+        // 支持 KnowledgePointsResponse 类型（通过反射获取内部类型）
+        if (typeof(T).Name == "KnowledgePointsResponse")
+        {
+            // 创建降级响应，使用动态类型检测
+            var fallback = new
+            {
+                SchemaVersion = "1.0",
+                KnowledgePoints = new object[0]
+            };
+            return fallback as T ?? throw new InvalidOperationException();
         }
 
         throw new NotSupportedException($"不支持的类型: {typeof(T).Name}");
