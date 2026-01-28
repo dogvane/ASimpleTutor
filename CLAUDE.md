@@ -29,6 +29,11 @@
 - 原文对照必须可追溯：至少包含 `filePath` + `标题路径` + `段落/行号范围`
 - Agent 输出尽量用结构化 JSON，解析失败最多重试 1 次（修复 JSON），不要无限重试
 
+## 测试前约束（必须遵守）
+
+- 运行 `dotnet test` 之前，先执行清理脚本：`powershell -File scripts/clean.ps1`
+- 不要直接执行 `rm -rf ...` / `rmdir /s ...` 这类删除命令；统一通过 `scripts/clean.ps1` 清理构建产物
+
 ## 文档设计阶段
 
 - 需求文档里不能有代码描述

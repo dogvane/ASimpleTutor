@@ -44,6 +44,14 @@ public class MarkdownScanner : IScannerService
                 continue;
             }
 
+            // 检查是否是隐藏文件或临时文件
+            var fileName = Path.GetFileName(filePath);
+            if (IsHiddenOrTempFile(fileName))
+            {
+                _logger.LogDebug("跳过隐藏或临时文件: {FilePath}", filePath);
+                continue;
+            }
+
             try
             {
                 var doc = await ParseDocumentAsync(filePath, cancellationToken);
@@ -68,6 +76,23 @@ public class MarkdownScanner : IScannerService
         var parts = relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
         return parts.Any(part => excludeDirNames.Contains(part, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static bool IsHiddenOrTempFile(string fileName)
+    {
+        // 隐藏文件（以 . 开头）
+        if (fileName.StartsWith('.'))
+        {
+            return true;
+        }
+
+        // 临时文件（以 ~ 结尾）
+        if (fileName.EndsWith('~'))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private async Task<Document?> ParseDocumentAsync(string filePath, CancellationToken cancellationToken)
