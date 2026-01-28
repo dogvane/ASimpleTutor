@@ -1,0 +1,10 @@
+{
+  "kp_id": "kp_002",
+  "book_root_id": "book_001",
+  "title": "",
+  "aliases": [],
+  "chapter_path": ["第一章"],
+  "importance": 0.5,
+  "snippet_ids": ["snippet_001"],
+  "relations": []
+}

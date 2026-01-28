@@ -1,0 +1,10 @@
+{
+  "kp_id": "kp_001",
+  "book_root_id": "book_001",
+  "title": "什么是 Markdown",
+  "aliases": ["MD", "标记语言"],
+  "chapter_path": ["第一章", "1.1 基础概念"],
+  "importance": 0.8,
+  "snippet_ids": ["snippet_001", "snippet_002"],
+  "relations": []
+}

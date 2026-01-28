@@ -1,0 +1,35 @@
+[
+  {
+    "snippet_id": "snippet_001",
+    "book_root_id": "book_001",
+    "doc_id": "doc_001",
+    "file_path": "/docs/ch01.md",
+    "heading_path": ["第一章", "1.1 基础概念"],
+    "content": "Markdown 是一种轻量级标记语言，由 John Gruber 于 2004 年创建。它的设计目标是易读易写，让文档内容本身就能直接作为网页发布。Markdown 语法简单直观，通过简单的符号来标记文本格式，如标题、列表、链接等。",
+    "start_line": 10,
+    "end_line": 15,
+    "chunk_id": null
+  },
+  {
+    "snippet_id": "snippet_002",
+    "book_root_id": "book_001",
+    "doc_id": "doc_001",
+    "file_path": "/docs/ch01.md",
+    "heading_path": ["第一章", "1.2 标题语法"],
+    "content": "Markdown 支持六级标题，使用 # 符号表示。# 后跟空格再跟标题文本。一级标题使用一个 #，二级标题使用两个 #，以此类推。标题语法让文档结构清晰，便于阅读和导航。",
+    "start_line": 20,
+    "end_line": 25,
+    "chunk_id": null
+  },
+  {
+    "snippet_id": "snippet_003",
+    "book_root_id": "book_001",
+    "doc_id": "doc_002",
+    "file_path": "/docs/ch02.md",
+    "heading_path": ["第二章", "2.1 列表语法"],
+    "content": "Markdown 支持有序列表和无序列表。无序列表使用 *、+ 或 - 符号开头。有序列表使用数字加句点开头。列表可以嵌套，通过缩进来表示层级关系。",
+    "start_line": 5,
+    "end_line": 10,
+    "chunk_id": null
+  }
+]

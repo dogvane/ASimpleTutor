@@ -129,8 +129,11 @@ public class LearningGenerator : ILearningGenerator
         return new List<string>();
     }
 
-    private LearningPack CreateFallbackLearningPack(KnowledgePoint kp, List<SourceSnippet> snippets)
+    private LearningPack CreateFallbackLearningPack(KnowledgePoint kp, List<SourceSnippet>? snippets)
     {
+        // 处理 null 或空列表
+        snippets ??= new List<SourceSnippet>();
+
         // 从原文片段简单提取要点
         var allContent = string.Join("\n", snippets.Select(s => s.Content));
         var sentences = allContent.Split('.', StringSplitOptions.RemoveEmptyEntries);
