@@ -1,0 +1,19 @@
+using ASimpleTutor.Core.Models;
+
+namespace ASimpleTutor.Core.Interfaces;
+
+/// <summary>
+/// LLM 服务接口
+/// </summary>
+public interface ILLMService
+{
+    /// <summary>
+    /// 发送聊天请求
+    /// </summary>
+    Task<string> ChatAsync(string systemPrompt, string userMessage, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 发送聊天请求并期望 JSON 响应
+    /// </summary>
+    Task<T> ChatJsonAsync<T>(string systemPrompt, string userMessage, CancellationToken cancellationToken = default) where T : class;
+}

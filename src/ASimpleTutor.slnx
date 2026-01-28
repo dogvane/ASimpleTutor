@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ASimpleTutor.Api/ASimpleTutor.Api.csproj" />
+  <Project Path="ASimpleTutor.Core/ASimpleTutor.Core.csproj" />
+</Solution>
