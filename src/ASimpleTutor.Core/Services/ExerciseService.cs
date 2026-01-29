@@ -58,7 +58,7 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
 {{
   ""exercises"": [
     {{
-      ""type"": ""选择题|填空题|简答题"",
+      ""type"": ""SingleChoice|FillBlank|ShortAnswer"",
       ""question"": ""题目内容"",
       ""options"": [""选项1"", ""选项2"", ""选项3"", ""选项4""],
       ""correct_answer"": ""正确答案"",
@@ -68,12 +68,18 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
   ]
 }}
 
+类型说明：
+- SingleChoice = 选择题
+- FillBlank = 填空题
+- ShortAnswer = 简答题
+
 生成原则：
 1. 题目难度为基础理解，不引入外部知识
 2. 选择题：1个正确答案 + 2~3个干扰项
 3. 填空题：关键术语或步骤
 4. 简答题：可从要点角度回答的问题
-5. 必须基于原文片段出题";
+5. 必须基于原文片段出题
+6. type 字段必须使用英文：SingleChoice、FillBlank 或 ShortAnswer";
 
         var userMessage = $"知识点：{kp.Title}\n" +
                           $"章节：{string.Join(" > ", kp.ChapterPath)}\n" +

@@ -17,6 +17,7 @@ public class Program
     private static ILogger<SourceTracker> _trackerLogger = null!;
     private static ILogger<LearningGenerator> _generatorLogger = null!;
     private static ILogger<KnowledgeBuilder> _builderLogger = null!;
+    private static ILogger<ExerciseService> _exerciseLogger = null!;
 
     public static async Task Main(string[] args)
     {
@@ -78,6 +79,7 @@ public class Program
         _trackerLogger = loggerFactory.CreateLogger<SourceTracker>();
         _generatorLogger = loggerFactory.CreateLogger<LearningGenerator>();
         _builderLogger = loggerFactory.CreateLogger<KnowledgeBuilder>();
+        _exerciseLogger = loggerFactory.CreateLogger<ExerciseService>();
 
         // 2. 手动创建服务依赖
         var sourceTracker = new SourceTracker(_trackerLogger);
@@ -90,6 +92,7 @@ public class Program
         await TestDocumentScanner(scanner, dataPath, outputPath, results);
         var knowledgeSystem = await TestKnowledgeBuilder(sourceTracker, scanner, llmService, dataPath, outputPath, results);
         await TestLearningGenerator(sourceTracker, llmService, knowledgeSystem, outputPath, results);
+        await TestExerciseGenerator(sourceTracker, llmService, knowledgeSystem, outputPath, results);
 
         // 4. 保存测试结果摘要
         var summaryPath = Path.Combine(outputPath, "test_summary.json");
@@ -309,6 +312,156 @@ public class Program
 
         Console.WriteLine();
     }
+
+    private static async Task TestExerciseGenerator(
+        ISourceTracker sourceTracker,
+        ILLMService llmService,
+        KnowledgeSystem? knowledgeSystem,
+        string outputPath,
+        IntegrationTestResults results)
+    {
+        Console.WriteLine("[测试 4] 习题生成服务");
+        Console.WriteLine("-".PadRight(40, '-'));
+
+        try
+        {
+            // 检查知识体系是否有效
+            if (knowledgeSystem == null || !knowledgeSystem.KnowledgePoints.Any())
+            {
+                results.ExerciseGeneratorTest = new ExerciseGeneratorTestResult
+                {
+                    Success = false,
+                    ErrorMessage = "没有可用的知识点，请先运行知识体系构建测试"
+                };
+                Console.WriteLine("  跳过: 没有知识点");
+                Console.WriteLine();
+                return;
+            }
+
+            // 检查原文片段
+            var snippetIds = knowledgeSystem.Snippets?.Keys.ToList() ?? new List<string>();
+            if (!snippetIds.Any())
+            {
+                results.ExerciseGeneratorTest = new ExerciseGeneratorTestResult
+                {
+                    Success = false,
+                    ErrorMessage = "没有可用的原文片段"
+                };
+                Console.WriteLine("  跳过: 没有原文片段");
+                Console.WriteLine();
+                return;
+            }
+
+            // 创建 RAG 服务
+            var ragLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<InMemorySimpleRagService>();
+            var ragService = new InMemorySimpleRagService(sourceTracker, ragLogger);
+
+            // 创建习题服务
+            var exerciseService = new ExerciseService(ragService, sourceTracker, llmService, _exerciseLogger);
+
+            // 选择一个知识点进行测试
+            var testKp = knowledgeSystem.KnowledgePoints
+                .OrderByDescending(kp => kp.Importance)
+                .First();
+
+            // 确保知识点有原文片段
+            if (!testKp.SnippetIds.Any())
+            {
+                testKp.SnippetIds = new List<string> { snippetIds.First() };
+            }
+
+            Console.WriteLine($"  测试知识点: {testKp.Title}");
+            Console.WriteLine($"  原文片段数: {testKp.SnippetIds.Count}");
+
+            // 生成 3 道习题
+            var exercises = await exerciseService.GenerateAsync(testKp, count: 3);
+
+            results.ExerciseGeneratorTest = new ExerciseGeneratorTestResult
+            {
+                Success = true,
+                ExerciseCount = exercises.Count,
+                ChoiceCount = exercises.Count(e => e.Type == ExerciseType.SingleChoice),
+                FillBlankCount = exercises.Count(e => e.Type == ExerciseType.FillBlank),
+                ShortAnswerCount = exercises.Count(e => e.Type == ExerciseType.ShortAnswer),
+                Exercises = exercises.Select(e => new ExerciseInfo
+                {
+                    ExerciseId = e.ExerciseId,
+                    Type = e.Type.ToString(),
+                    Question = e.Question.Length > 50 ? e.Question.Substring(0, 50) + "..." : e.Question,
+                    CorrectAnswer = e.CorrectAnswer.Length > 30 ? e.CorrectAnswer.Substring(0, 30) + "..." : e.CorrectAnswer,
+                    OptionCount = e.Options.Count,
+                    KeyPointCount = e.KeyPoints.Count,
+                    EvidenceSnippetCount = e.EvidenceSnippetIds.Count
+                }).ToList()
+            };
+
+            Console.WriteLine($"  生成 {exercises.Count} 道习题:");
+            Console.WriteLine($"    - 选择题: {results.ExerciseGeneratorTest.ChoiceCount} 题");
+            Console.WriteLine($"    - 填空题: {results.ExerciseGeneratorTest.FillBlankCount} 题");
+            Console.WriteLine($"    - 简答题: {results.ExerciseGeneratorTest.ShortAnswerCount} 题");
+            Console.WriteLine();
+
+            // 显示每道习题
+            foreach (var (exercise, index) in exercises.Select((e, i) => (e, i + 1)))
+            {
+                Console.WriteLine($"  习题 {index}: [{exercise.Type}]");
+                Console.WriteLine($"    问题: {exercise.Question}");
+                Console.WriteLine($"    答案: {exercise.CorrectAnswer}");
+
+                if (exercise.Type == ExerciseType.SingleChoice && exercise.Options.Any())
+                {
+                    Console.WriteLine($"    选项: {string.Join(", ", exercise.Options)}");
+                }
+
+                if (exercise.KeyPoints.Any())
+                {
+                    Console.WriteLine($"    考查要点: {string.Join(", ", exercise.KeyPoints.Take(3))}");
+                }
+                Console.WriteLine();
+            }
+
+            // 如果有习题，进行题测试判
+            if (exercises.Any())
+            {
+                Console.WriteLine("  [判题测试]");
+                Console.WriteLine("  -".PadRight(30, '-'));
+
+                var choiceExercise = exercises.FirstOrDefault(e => e.Type == ExerciseType.SingleChoice);
+                if (choiceExercise != null)
+                {
+                    // 测试正确答案
+                    var correctFeedback = await exerciseService.JudgeAsync(choiceExercise, choiceExercise.CorrectAnswer);
+                    Console.WriteLine($"  选择题 - 正确答案: {(correctFeedback.IsCorrect == true ? "正确" : "错误")}");
+
+                    // 测试错误答案
+                    var wrongOption = choiceExercise.Options.First(o => o != choiceExercise.CorrectAnswer);
+                    var wrongFeedback = await exerciseService.JudgeAsync(choiceExercise, wrongOption);
+                    Console.WriteLine($"  选择题 - 错误答案: {(wrongFeedback.IsCorrect == false ? "正确判定" : "判定错误")}");
+                    Console.WriteLine($"    参考答案: {wrongFeedback.ReferenceAnswer}");
+                }
+                else
+                {
+                    // 测试填空题或简答题
+                    var otherExercise = exercises.First();
+                    var feedback = await exerciseService.JudgeAsync(otherExercise, "测试答案");
+                    Console.WriteLine($"  {otherExercise.Type} - 判题测试完成");
+                    Console.WriteLine($"    参考答案: {feedback.ReferenceAnswer}");
+                }
+                Console.WriteLine();
+            }
+
+            // 保存详细结果
+            var exResultPath = Path.Combine(outputPath, "04_exercise_generator_result.json");
+            await File.WriteAllTextAsync(exResultPath, JsonConvert.SerializeObject(exercises, Formatting.Indented));
+            Console.WriteLine($"  详细结果: {exResultPath}");
+        }
+        catch (Exception ex)
+        {
+            results.ExerciseGeneratorTest = new ExerciseGeneratorTestResult { Success = false, ErrorMessage = ex.Message };
+            Console.WriteLine($"  失败: {ex.Message}");
+            Console.WriteLine();
+        }
+    }
 }
 
 // ==================== 配置类 ====================
@@ -333,6 +486,7 @@ public class IntegrationTestResults
     public ScannerTestResult? ScannerTest { get; set; }
     public KnowledgeBuilderTestResult? KnowledgeBuilderTest { get; set; }
     public LearningGeneratorTestResult? LearningGeneratorTest { get; set; }
+    public ExerciseGeneratorTestResult? ExerciseGeneratorTest { get; set; }
 }
 
 public class ScannerTestResult
@@ -377,4 +531,28 @@ public class LearningGeneratorTestResult
     public int LevelCount { get; set; }
     public int SnippetCount { get; set; }
     public string? ErrorMessage { get; set; }
+}
+
+// ==================== 习题生成测试结果类 ====================
+
+public class ExerciseGeneratorTestResult
+{
+    public bool Success { get; set; }
+    public int ExerciseCount { get; set; }
+    public int ChoiceCount { get; set; }
+    public int FillBlankCount { get; set; }
+    public int ShortAnswerCount { get; set; }
+    public List<ExerciseInfo>? Exercises { get; set; }
+    public string? ErrorMessage { get; set; }
+}
+
+public class ExerciseInfo
+{
+    public string ExerciseId { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string Question { get; set; } = string.Empty;
+    public string CorrectAnswer { get; set; } = string.Empty;
+    public int OptionCount { get; set; }
+    public int KeyPointCount { get; set; }
+    public int EvidenceSnippetCount { get; set; }
 }
