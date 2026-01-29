@@ -56,7 +56,10 @@ public class Program
         // 需要向上 5 级到达项目根目录，然后访问 tests/datas/hello-agents
         var projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
         var dataPath = Path.Combine(projectRoot, "tests", "datas", "hello-agents");
-        var outputPath = Path.Combine(projectRoot, "tests", "results");
+
+        // 输出路径改为与数据目录同级别，例如: tests/hello-agents-output
+        var dataDirName = Path.GetFileName(dataPath);
+        var outputPath = Path.Combine(projectRoot, "tests", $"{dataDirName}-output");
 
         // 确保输出目录存在
         Directory.CreateDirectory(outputPath);
