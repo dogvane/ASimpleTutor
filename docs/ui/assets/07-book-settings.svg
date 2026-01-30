@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <style>
+    .box{fill:#fff;stroke:#333;stroke-width:1.5}
+    .muted{fill:#f5f7fb;stroke:#9aa4b2;stroke-width:1}
+    .text{font-family:Segoe UI,Arial;fill:#111;font-size:14px}
+    .label{font-family:Segoe UI,Arial;fill:#555;font-size:12px}
+  </style>
+  <rect class="box" x="20" y="20" width="920" height="500" rx="8"/>
+  <text class="text" x="40" y="55">书籍设置（后台任务与刷新）</text>
+
+  <rect class="muted" x="40" y="80" width="880" height="60" rx="6"/>
+  <text class="label" x="52" y="115">当前书籍信息（名称 / 路径 / 描述）</text>
+
+  <rect class="muted" x="40" y="150" width="880" height="220" rx="6"/>
+  <text class="label" x="52" y="180">后台任务状态：扫描 / 总结 / 习题生成</text>
+  <text class="label" x="52" y="205">状态：ready / generating / failed + 最近时间</text>
+
+  <rect class="muted" x="40" y="380" width="880" height="90" rx="6"/>
+  <text class="label" x="52" y="405">操作区</text>
+  <rect class="box" x="52" y="420" width="120" height="36" rx="6"/>
+  <text class="label" x="72" y="444">重新扫描</text>
+  <rect class="box" x="188" y="420" width="120" height="36" rx="6"/>
+  <text class="label" x="208" y="444">刷新状态</text>
+  <rect class="box" x="324" y="420" width="120" height="36" rx="6"/>
+  <text class="label" x="350" y="444">重试</text>
+</svg>

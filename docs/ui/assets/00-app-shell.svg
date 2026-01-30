@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <style>
+    .box{fill:#fff;stroke:#333;stroke-width:1.5}
+    .muted{fill:#f5f7fb;stroke:#9aa4b2;stroke-width:1}
+    .text{font-family:Segoe UI,Arial;fill:#111;font-size:14px}
+    .label{font-family:Segoe UI,Arial;fill:#555;font-size:12px}
+  </style>
+  <rect class="box" x="20" y="20" width="920" height="500" rx="8"/>
+  <rect class="muted" x="40" y="40" width="880" height="54" rx="6"/>
+  <text class="text" x="60" y="72">TopBar：书籍选择 | 当前路径 | 重扫 | 搜索</text>
+  <rect class="muted" x="40" y="110" width="220" height="390" rx="6"/>
+  <text class="label" x="60" y="140">章节树 / 搜索</text>
+  <rect class="muted" x="270" y="110" width="650" height="390" rx="6"/>
+  <text class="label" x="290" y="140">学习面板（KP 列表 + 内容区）</text>
+  <text class="label" x="60" y="500">App Shell / Split Layout</text>
+</svg>
