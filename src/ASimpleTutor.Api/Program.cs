@@ -1,5 +1,4 @@
 using ASimpleTutor.Api.Configuration;
-using ASimpleTutor.Api.Endpoints;
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Services;
 using Swashbuckle.AspNetCore.SwaggerGen;
@@ -20,7 +19,7 @@ builder.Configuration.GetSection("App").Bind(config);
 // 注册配置为单例
 builder.Services.AddSingleton(config);
 
-// 注册 Core 服务
+// 注册日志
 builder.Services.AddLogging(logging =>
 {
     logging.AddConsole();
@@ -77,34 +76,30 @@ if (app.Environment.IsDevelopment())
 app.UseRouting();
 app.MapControllers();
 
-// 注册端点
-app.MapBookEndpoints();
-app.MapAdminEndpoints();
-app.MapKnowledgeEndpoints();
-app.MapLearningEndpoints();
-app.MapExerciseEndpoints();
-
 // 健康检查
-app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Timestamp = DateTime.UtcNow }));
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.UtcNow }));
 
 // 首页
 app.MapGet("/", () => Results.Ok(new
 {
-    Name = "ASimpleTutor API",
-    Version = "1.0.0",
-    Endpoints = new[]
+    name = "ASimpleTutor API",
+    version = "1.0.0",
+    endpoints = new[]
     {
         "GET /health - 健康检查",
-        "GET /api/books - 获取书籍目录列表",
-        "POST /api/books/{id}/activate - 激活书籍目录",
-        "POST /api/admin/build - 构建知识体系",
-        "GET /api/knowledge-points - 获取知识点列表",
-        "GET /api/knowledge-points/search?q=xxx - 搜索知识点",
-        "GET /api/knowledge-points/{id} - 获取知识点详情",
-        "GET /api/learning/{kpId} - 获取学习内容",
-        "POST /api/exercises/generate - 生成习题",
-        "GET /api/exercises/{id} - 获取习题",
-        "POST /api/exercises/{id}/submit - 提交答案"
+        "GET /api/v1/books/roots - 获取书籍目录列表",
+        "POST /api/v1/books/activate - 激活书籍目录",
+        "POST /api/v1/books/scan - 触发扫描",
+        "GET /api/v1/chapters - 获取章节树",
+        "GET /api/v1/chapters/search - 搜索章节",
+        "GET /api/v1/chapters/knowledge-points - 获取章节知识点",
+        "GET /api/v1/knowledge-points/overview - 获取精要速览",
+        "GET /api/v1/knowledge-points/source-content - 获取原文对照",
+        "GET /api/v1/knowledge-points/detailed-content - 获取层次展开内容",
+        "GET /api/v1/knowledge-points/exercises/status - 检查习题状态",
+        "GET /api/v1/knowledge-points/exercises - 获取习题列表",
+        "POST /api/v1/exercises/submit - 提交答案",
+        "POST /api/v1/exercises/feedback - 批量提交并获取反馈"
     }
 }));
 
