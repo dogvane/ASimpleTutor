@@ -104,7 +104,6 @@ MVP 行为：
 | `Content` | string | 片段内容文本 |
 | `StartLine` | int | 起始行号 |
 | `EndLine` | int | 结束行号 |
-| `ChunkId` | string | 检索分块 ID（LightRAG 用） |
 
 > 说明：`SourceSnippet` 在 MVP 默认来自主书文档。若后续引入参考资料检索，可扩展支持 `DocId`（主书）与 `RefDocId`（参考）二选一的引用方式。
 

@@ -1,6 +1,6 @@
 # third_party
 
-此目录用于存放“从其它 Git 仓库拉取”的第三方 .NET 组件源码。
+此目录用于存放"从其它 Git 仓库拉取"的第三方 .NET 组件源码。
 
 约定：
 
@@ -8,7 +8,4 @@
 
 当前组件：
 
-https://github.com/dogvane/MiniLightRag
-
-- MiniLightRag → `third_party/MiniLightRag/`
-
+（无）

@@ -5,7 +5,6 @@ namespace ASimpleTutor.Core.Services;
 
 /// <summary>
 /// 简单的 RAG 服务内存实现
-/// 遵循设计文档定义的接口，等 MiniLightRag 准备好后可替换
 /// </summary>
 public class InMemorySimpleRagService : ISimpleRagService
 {
@@ -62,7 +61,6 @@ public class InMemorySimpleRagService : ISimpleRagService
     public Task<List<SearchResult>> SearchAsync(string query, int topK = 5)
     {
         // 简单实现：基于关键词匹配
-        // 后续可以集成真正的向量检索
         _logger.LogDebug("搜索查询: {Query}, topK: {TopK}", query, topK);
 
         var queryWords = query.ToLower().Split(' ', StringSplitOptions.RemoveEmptyEntries);

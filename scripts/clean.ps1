@@ -7,10 +7,12 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $targets = @(
   'tests/ASimpleTutor.Tests/bin',
   'tests/ASimpleTutor.Tests/obj',
+  'tests/ASimpleTutor.IntegrationTests/bin',
+  'tests/ASimpleTutor.IntegrationTests/obj',
   'src/ASimpleTutor.Core/bin',
   'src/ASimpleTutor.Core/obj',
-  'third_party/MiniLightRag/LightRAG.Core/bin',
-  'third_party/MiniLightRag/LightRAG.Core/obj'
+  'src/ASimpleTutor.Api/bin',
+  'src/ASimpleTutor.Api/obj'
 )
 
 Write-Host "Cleaning build outputs under: $repoRoot"

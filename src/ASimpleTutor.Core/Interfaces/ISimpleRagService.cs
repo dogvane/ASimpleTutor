@@ -1,7 +1,7 @@
 namespace ASimpleTutor.Core.Interfaces;
 
 /// <summary>
-/// LightRAG 简单服务接口（MiniLightRag 兼容）
+/// 简单 RAG 服务接口
 /// </summary>
 public interface ISimpleRagService
 {
