@@ -49,6 +49,15 @@
 - JSON：DTO 优先英文属性；必要时用 `[JsonPropertyName("...")]`；对外返回可加 `schemaVersion`
 - 日志：`ILogger<T>` 结构化日志；不要记录密钥/敏感原文；LLM 仅记录耗时/摘要
 
+## API URL 设计原则
+
+- 资源优先：URL 以资源名词命名，使用复数形式
+  - ✅ `/api/v1/chapters`、`/api/v1/knowledge-points`
+  - ❌ `/api/v1/getChapters`、`/api/v1/chapter/list`
+- 参数 POST 提交：不在 URL 中使用 `/{id}/` 形式传递资源标识，参数统一放 body
+  - ✅ `POST /api/v1/exercises/submit`
+  - ❌ `POST /api/v1/exercises/{exerciseId}/submit`
+
 ## 常用命令（工程落地后）
 
 ```bash
