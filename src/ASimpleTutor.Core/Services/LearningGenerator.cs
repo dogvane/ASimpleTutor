@@ -1,6 +1,7 @@
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 
 namespace ASimpleTutor.Core.Services;
 
@@ -57,10 +58,13 @@ public class LearningGenerator : ILearningGenerator
                 learningPack = CreateFallbackLearningPack(kp, snippets);
             }
 
-            // 3. 收集原文片段
+            // 3. 自检学习内容
+            ValidateLearningPack(learningPack, kp);
+
+            // 4. 收集原文片段
             learningPack.SnippetIds = snippets.Select(s => s.SnippetId).ToList();
 
-            // 4. 关联知识点（可选）
+            // 5. 关联知识点（可选）
             learningPack.RelatedKpIds = await FindRelatedKnowledgePointsAsync(kp, cancellationToken);
         }
         catch (Exception ex)
@@ -82,7 +86,7 @@ public class LearningGenerator : ILearningGenerator
 请以 JSON 格式输出，结构如下：
 {
   ""summary"": {
-    ""definition"": ""知识点的精确定义（1-3句）"",
+    ""definition"": ""知识点的精确定义（1-3句，必须填写）"",
     ""key_points"": [""核心要点1"", ""核心要点2"", ""核心要点3""],
     ""pitfalls"": [""常见误区1"", ""常见误区2""]
   },
@@ -109,7 +113,13 @@ public class LearningGenerator : ILearningGenerator
 1. 只基于提供的原文片段，不引入外部知识
 2. 定义要简洁准确，要点要清晰实用
 3. 常见误区要具体且有针对性
-4. 层次化内容要循序渐进";
+4. 层次化内容要循序渐进
+5. summary.definition 必须填写，不能为空
+
+自检要求：
+- summary.definition 不能为空
+- levels 至少包含 level=1 的内容
+- 如果无法生成有效内容，请返回空对象 {} 而非报错";
 
         var userMessage = $"知识点标题：{kp.Title}\n" +
                           $"所属章节：{string.Join(" > ", kp.ChapterPath)}\n" +
@@ -127,6 +137,23 @@ public class LearningGenerator : ILearningGenerator
     {
         // MVP 阶段暂不实现，返回空列表
         return new List<string>();
+    }
+
+    private void ValidateLearningPack(LearningPack pack, KnowledgePoint kp)
+    {
+        if (pack.Summary == null)
+        {
+            _logger.LogWarning("学习内容 summary 为空: {KpId}", kp.KpId);
+        }
+        else if (string.IsNullOrEmpty(pack.Summary.Definition))
+        {
+            _logger.LogWarning("学习内容 definition 为空: {KpId}", kp.KpId);
+        }
+
+        if (pack.Levels == null || !pack.Levels.Any(l => l.Level == 1))
+        {
+            _logger.LogWarning("学习内容缺少 level=1 的层次: {KpId}", kp.KpId);
+        }
     }
 
     private LearningPack CreateFallbackLearningPack(KnowledgePoint kp, List<SourceSnippet>? snippets)
@@ -163,10 +190,13 @@ public class LearningGenerator : ILearningGenerator
 }
 
 /// <summary>
-/// LLM 响应数据结构
+/// LLM 响应数据结构（JSON 字段使用 snake_case，与设计文档保持一致）
 /// </summary>
 public class LearningContentResponse
 {
+    [JsonProperty("summary")]
     public Summary Summary { get; set; } = new();
+
+    [JsonProperty("levels")]
     public List<ContentLevel> Levels { get; set; } = new();
 }

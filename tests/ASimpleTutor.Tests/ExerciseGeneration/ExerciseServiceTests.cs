@@ -653,15 +653,16 @@ public class ExerciseServiceTests
     {
         return new ExercisesResponse
         {
-            Exercises = new List<Exercise>
+            Exercises = new List<ExerciseDto>
             {
-                new Exercise
+                new ExerciseDto
                 {
-                    Type = ExerciseType.SingleChoice,
+                    Type = "SingleChoice",
                     Question = "关于智能体的描述，以下正确的是？",
                     Options = new List<string> { "只能被动响应", "能够感知并行动", "不需要计算", "只能用于游戏" },
                     CorrectAnswer = "B",
-                    KeyPoints = new List<string> { "感知环境", "采取行动" }
+                    KeyPoints = new List<string> { "感知环境", "采取行动" },
+                    Explanation = "智能体能够感知环境并自主采取行动"
                 }
             }
         };
@@ -671,29 +672,32 @@ public class ExerciseServiceTests
     {
         return new ExercisesResponse
         {
-            Exercises = new List<Exercise>
+            Exercises = new List<ExerciseDto>
             {
-                new Exercise
+                new ExerciseDto
                 {
-                    Type = ExerciseType.SingleChoice,
+                    Type = "SingleChoice",
                     Question = "选择题1",
                     Options = new List<string> { "A", "B", "C", "D" },
                     CorrectAnswer = "A",
-                    KeyPoints = new List<string> { "要点1" }
+                    KeyPoints = new List<string> { "要点1" },
+                    Explanation = "解释"
                 },
-                new Exercise
+                new ExerciseDto
                 {
-                    Type = ExerciseType.FillBlank,
+                    Type = "FillBlank",
                     Question = "填空题1 _____",
                     CorrectAnswer = "答案",
-                    KeyPoints = new List<string> { "要点2" }
+                    KeyPoints = new List<string> { "要点2" },
+                    Explanation = "解释"
                 },
-                new Exercise
+                new ExerciseDto
                 {
-                    Type = ExerciseType.ShortAnswer,
+                    Type = "ShortAnswer",
                     Question = "简答题1",
                     CorrectAnswer = "参考答案",
-                    KeyPoints = new List<string> { "要点3" }
+                    KeyPoints = new List<string> { "要点3" },
+                    Explanation = "解释"
                 }
             }
         };
@@ -703,15 +707,16 @@ public class ExerciseServiceTests
     {
         return new ExercisesResponse
         {
-            Exercises = new List<Exercise>
+            Exercises = new List<ExerciseDto>
             {
-                new Exercise
+                new ExerciseDto
                 {
-                    Type = ExerciseType.SingleChoice,
+                    Type = "SingleChoice",
                     Question = "关于智能体的描述，以下正确的是？",
                     Options = new List<string> { "只能被动响应指令", "能够感知环境并自主行动", "不需要任何计算资源", "只能用于游戏领域" },
                     CorrectAnswer = "B",
-                    KeyPoints = new List<string> { "感知环境", "自主行动" }
+                    KeyPoints = new List<string> { "感知环境", "自主行动" },
+                    Explanation = "智能体能够感知环境并自主采取行动"
                 }
             }
         };
@@ -721,14 +726,15 @@ public class ExerciseServiceTests
     {
         return new ExercisesResponse
         {
-            Exercises = new List<Exercise>
+            Exercises = new List<ExerciseDto>
             {
-                new Exercise
+                new ExerciseDto
                 {
-                    Type = ExerciseType.FillBlank,
+                    Type = "FillBlank",
                     Question = "智能体的三大核心能力是：感知_____、自主_____、执行_____。",
                     CorrectAnswer = "环境,决策,行动",
-                    KeyPoints = new List<string> { "感知", "决策", "行动" }
+                    KeyPoints = new List<string> { "感知", "决策", "行动" },
+                    Explanation = "感知环境、自主决策、执行行动"
                 }
             }
         };
@@ -738,14 +744,15 @@ public class ExerciseServiceTests
     {
         return new ExercisesResponse
         {
-            Exercises = new List<Exercise>
+            Exercises = new List<ExerciseDto>
             {
-                new Exercise
+                new ExerciseDto
                 {
-                    Type = ExerciseType.ShortAnswer,
+                    Type = "ShortAnswer",
                     Question = "请用自己的话解释什么是智能体，并列举其主要特征。",
                     CorrectAnswer = "智能体是能够感知环境并采取行动的系统。特征包括：感知能力、推理能力、学习能力、决策能力。",
-                    KeyPoints = new List<string> { "感知环境", "采取行动", "推理能力", "学习能力", "决策能力" }
+                    KeyPoints = new List<string> { "感知环境", "采取行动", "推理能力", "学习能力", "决策能力" },
+                    Explanation = "智能体是能够感知环境并采取行动的系统"
                 }
             }
         };

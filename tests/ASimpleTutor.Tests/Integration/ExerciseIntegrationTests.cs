@@ -51,15 +51,16 @@ public class ExerciseIntegrationTests
         // 2. 设置习题生成响应
         var exerciseResponse = new ExercisesResponse
         {
-            Exercises = new List<Exercise>
+            Exercises = new List<ExerciseDto>
             {
-                new Exercise
+                new ExerciseDto
                 {
-                    Type = ExerciseType.SingleChoice,
+                    Type = "SingleChoice",
                     Question = "关于智能体的描述，以下正确的是？",
                     Options = new List<string> { "只能被动响应", "能够感知并行动", "不需要计算", "只能用于游戏" },
                     CorrectAnswer = "B",
-                    KeyPoints = new List<string> { "感知环境", "采取行动" }
+                    KeyPoints = new List<string> { "感知环境", "采取行动" },
+                    Explanation = "智能体能够感知环境并自主采取行动"
                 }
             }
         };
@@ -99,15 +100,16 @@ public class ExerciseIntegrationTests
 
         var exerciseResponse = new ExercisesResponse
         {
-            Exercises = new List<Exercise>
+            Exercises = new List<ExerciseDto>
             {
-                new Exercise
+                new ExerciseDto
                 {
-                    Type = ExerciseType.SingleChoice,
+                    Type = "SingleChoice",
                     Question = "关于智能体的描述，以下正确的是？",
                     Options = new List<string> { "只能被动响应", "能够感知并行动", "不需要计算", "只能用于游戏" },
                     CorrectAnswer = "B",
-                    KeyPoints = new List<string> { "感知环境", "采取行动" }
+                    KeyPoints = new List<string> { "感知环境", "采取行动" },
+                    Explanation = "智能体能够感知环境并自主采取行动"
                 }
             }
         };
@@ -171,9 +173,9 @@ public class ExerciseIntegrationTests
                 callCount++;
                 return new ExercisesResponse
                 {
-                    Exercises = new List<Exercise>
+                    Exercises = new List<ExerciseDto>
                     {
-                        new Exercise { Type = ExerciseType.SingleChoice, Question = "测试题", CorrectAnswer = "A", KeyPoints = new List<string>() }
+                        new ExerciseDto { Type = "SingleChoice", Question = "测试题", CorrectAnswer = "A", KeyPoints = new List<string>(), Explanation = "解释" }
                     }
                 };
             });
@@ -229,15 +231,16 @@ public class ExerciseIntegrationTests
 
                 return new ExercisesResponse
                 {
-                    Exercises = new List<Exercise>
+                    Exercises = new List<ExerciseDto>
                     {
-                        new Exercise
+                        new ExerciseDto
                         {
-                            Type = ExerciseType.SingleChoice,
+                            Type = "SingleChoice",
                             Question = "智能体能够做什么？",
                             Options = new List<string> { "A", "B", "C", "D" },
                             CorrectAnswer = "A",
-                            KeyPoints = new List<string> { "感知环境" }
+                            KeyPoints = new List<string> { "感知环境" },
+                            Explanation = "智能体能够感知环境"
                         }
                     }
                 };
@@ -273,16 +276,16 @@ public class ExerciseIntegrationTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ExercisesResponse
             {
-                Exercises = new List<Exercise>
+                Exercises = new List<ExerciseDto>
                 {
-                    new Exercise
+                    new ExerciseDto
                     {
-                        Type = ExerciseType.SingleChoice,
+                        Type = "SingleChoice",
                         Question = "测试题",
                         Options = new List<string> { "A", "B", "C", "D" },
                         CorrectAnswer = "A",
-                        EvidenceSnippetIds = new List<string> { "snippet_001", "snippet_002" },
-                        KeyPoints = new List<string>()
+                        KeyPoints = new List<string>(),
+                        Explanation = "解释"
                     }
                 }
             });
@@ -315,29 +318,32 @@ public class ExerciseIntegrationTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ExercisesResponse
             {
-                Exercises = new List<Exercise>
+                Exercises = new List<ExerciseDto>
                 {
-                    new Exercise
+                    new ExerciseDto
                     {
-                        Type = ExerciseType.SingleChoice,
+                        Type = "SingleChoice",
                         Question = "测试题1",
                         Options = new List<string> { "A", "B", "C", "D" },
                         CorrectAnswer = "A",
-                        KeyPoints = new List<string>()
+                        KeyPoints = new List<string>(),
+                        Explanation = "解释1"
                     },
-                    new Exercise
+                    new ExerciseDto
                     {
-                        Type = ExerciseType.FillBlank,
+                        Type = "FillBlank",
                         Question = "测试题2 _____",
                         CorrectAnswer = "答案",
-                        KeyPoints = new List<string>()
+                        KeyPoints = new List<string>(),
+                        Explanation = "解释2"
                     },
-                    new Exercise
+                    new ExerciseDto
                     {
-                        Type = ExerciseType.ShortAnswer,
+                        Type = "ShortAnswer",
                         Question = "测试题3",
                         CorrectAnswer = "参考答案",
-                        KeyPoints = new List<string>()
+                        KeyPoints = new List<string>(),
+                        Explanation = "解释3"
                     }
                 }
             });
@@ -376,29 +382,32 @@ public class ExerciseIntegrationTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ExercisesResponse
             {
-                Exercises = new List<Exercise>
+                Exercises = new List<ExerciseDto>
                 {
-                    new Exercise
+                    new ExerciseDto
                     {
-                        Type = ExerciseType.SingleChoice,
+                        Type = "SingleChoice",
                         Question = "选择题",
                         Options = new List<string> { "A", "B", "C", "D" },
                         CorrectAnswer = "A",
-                        KeyPoints = new List<string>()
+                        KeyPoints = new List<string>(),
+                        Explanation = "解释1"
                     },
-                    new Exercise
+                    new ExerciseDto
                     {
-                        Type = ExerciseType.FillBlank,
+                        Type = "FillBlank",
                         Question = "填空题 _____",
                         CorrectAnswer = "答案",
-                        KeyPoints = new List<string>()
+                        KeyPoints = new List<string>(),
+                        Explanation = "解释2"
                     },
-                    new Exercise
+                    new ExerciseDto
                     {
-                        Type = ExerciseType.ShortAnswer,
+                        Type = "ShortAnswer",
                         Question = "简答题",
                         CorrectAnswer = "参考答案",
-                        KeyPoints = new List<string>()
+                        KeyPoints = new List<string>(),
+                        Explanation = "解释3"
                     }
                 }
             });

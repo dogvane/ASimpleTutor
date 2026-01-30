@@ -1,6 +1,7 @@
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 
 namespace ASimpleTutor.Core.Services;
 
@@ -63,15 +64,15 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
       ""options"": [""选项1"", ""选项2"", ""选项3"", ""选项4""],
       ""correct_answer"": ""正确答案"",
       ""key_points"": [""考查要点1"", ""考查要点2""],
-      ""explanation"": ""答案解释""
+      ""explanation"": ""答案解释（必须填写）""
     }}
   ]
 }}
 
 类型说明：
-- SingleChoice = 选择题
-- FillBlank = 填空题
-- ShortAnswer = 简答题
+- SingleChoice = 选择题，需要 4 个选项
+- FillBlank = 填空题，options 可为空数组
+- ShortAnswer = 简答题，options 可为空数组
 
 生成原则：
 1. 题目难度为基础理解，不引入外部知识
@@ -79,7 +80,14 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
 3. 填空题：关键术语或步骤
 4. 简答题：可从要点角度回答的问题
 5. 必须基于原文片段出题
-6. type 字段必须使用英文：SingleChoice、FillBlank 或 ShortAnswer";
+6. type 字段必须使用英文：SingleChoice、FillBlank 或 ShortAnswer
+7. explanation 必须填写，不能为空
+
+自检要求：
+- 生成的题目数量应与 count 基本一致
+- type 必须是枚举之一（SingleChoice、FillBlank、ShortAnswer）
+- correct_answer 不能为空
+- 如果无法生成指定数量的题目，返回实际能生成的数量并说明原因";
 
         var userMessage = $"知识点：{kp.Title}\n" +
                           $"章节：{string.Join(" > ", kp.ChapterPath)}\n" +
@@ -90,16 +98,30 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
             userMessage,
             cancellationToken);
 
-        var exercises = response?.Exercises ?? new List<Exercise>();
+        var exerciseDtos = response?.Exercises ?? new List<ExerciseDto>();
 
-        // 分配 ID
-        var index = 0;
-        foreach (var exercise in exercises)
+        // 自检：验证题目数据
+        if (exerciseDtos.Count == 0)
         {
-            exercise.ExerciseId = $"{kp.KpId}_ex_{index++}";
-            exercise.KpId = kp.KpId;
-            exercise.EvidenceSnippetIds = new List<string>(kp.SnippetIds);
+            _logger.LogWarning("未能生成任何习题: {KpId}", kp.KpId);
         }
+        else if (exerciseDtos.Count < count)
+        {
+            _logger.LogWarning("生成的题目数量不足: {ActualCount}/{ExpectedCount}, {KpId}",
+                exerciseDtos.Count, count, kp.KpId);
+        }
+
+        // 将 DTO 转换为 Exercise 并分配 ID
+        var exercises = exerciseDtos
+            .Select((dto, index) =>
+            {
+                var exercise = dto.ToExercise();
+                exercise.ExerciseId = $"{kp.KpId}_ex_{index}";
+                exercise.KpId = kp.KpId;
+                exercise.EvidenceSnippetIds = new List<string>(kp.SnippetIds);
+                return exercise;
+            })
+            .ToList();
 
         return exercises;
     }
@@ -211,17 +233,67 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
 }
 
 /// <summary>
-/// LLM 响应数据结构
+/// LLM 响应数据结构（JSON 字段使用 snake_case，与设计文档保持一致）
 /// </summary>
 public class ExercisesResponse
 {
-    public List<Exercise> Exercises { get; set; } = new();
+    [JsonProperty("exercises")]
+    public List<ExerciseDto> Exercises { get; set; } = new();
+}
+
+/// <summary>
+/// 习题 DTO（用于接收 LLM 返回的 JSON）
+/// </summary>
+public class ExerciseDto
+{
+    [JsonProperty("type")]
+    public string? Type { get; set; }
+
+    [JsonProperty("question")]
+    public string? Question { get; set; }
+
+    [JsonProperty("options")]
+    public List<string>? Options { get; set; }
+
+    [JsonProperty("correct_answer")]
+    public string? CorrectAnswer { get; set; }
+
+    [JsonProperty("key_points")]
+    public List<string>? KeyPoints { get; set; }
+
+    [JsonProperty("explanation")]
+    public string? Explanation { get; set; }
+
+    /// <summary>
+    /// 转换为标准的 Exercise
+    /// </summary>
+    public Exercise ToExercise()
+    {
+        return new Exercise
+        {
+            Type = Enum.TryParse<ExerciseType>(Type ?? "ShortAnswer", ignoreCase: true, out var type)
+                ? type
+                : ExerciseType.ShortAnswer,
+            Question = Question ?? string.Empty,
+            Options = Options ?? new List<string>(),
+            CorrectAnswer = CorrectAnswer ?? string.Empty,
+            KeyPoints = KeyPoints ?? new List<string>()
+            // 注意：Explanation 字段不在 Exercise 模型中，仅用于调试
+        };
+    }
 }
 
 public class FillBlankFeedbackResponse
 {
+    [JsonProperty("is_correct")]
     public bool? IsCorrect { get; set; }
+
+    [JsonProperty("explanation")]
     public string Explanation { get; set; } = string.Empty;
+
+    [JsonProperty("covered_points")]
     public List<string> CoveredPoints { get; set; } = new();
+
+    [JsonProperty("missing_points")]
     public List<string> MissingPoints { get; set; } = new();
 }

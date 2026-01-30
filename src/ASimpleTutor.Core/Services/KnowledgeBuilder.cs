@@ -146,7 +146,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
       ""chapter_path"": [""章节1"", ""章节2""],
       ""importance"": 0.0-1.0,
       ""snippet_ids"": [""chunk_id1"", ""chunk_id2""],
-      ""summary"": ""一句话总结""
+      ""summary"": ""一句话总结（必须填写）""
     }
   ]
 }
@@ -157,7 +157,13 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 2. 每个知识点必须至少关联一个原文片段（使用上面的 chunk_id）
 3. importance 反映知识点的重要程度（核心概念=0.8+, 细节=0.5, 边缘=0.3）
 4. 尽量使用原文中的表述作为标题
-5. snippet_ids 必须使用上述可用的 chunk_id 格式";
+5. snippet_ids 必须使用上述可用的 chunk_id 格式
+6. summary 必须填写，不能为空
+
+自检要求（生成后请检查）：
+- knowledge_points 不能为空，如果确实没有知识点请返回空数组并说明原因
+- 每个知识点的 snippet_ids 至少包含 1 个 ID
+- 所有标题必须非空且唯一（如果重复请合并）";
 
         var documentContent = string.Join("\n\n", documents.Select(d =>
             $"# {d.Title}\n{ReconstructDocumentContent(d)}"));
@@ -174,18 +180,61 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 
             _logger.LogInformation("LLM 调用完成，提取到 {Count} 个知识点", response?.KnowledgePoints?.Count ?? 0);
 
-            // 将 DTO 转换为标准的 KnowledgePoint
-            var kpList = response?.KnowledgePoints?
-                .Select((kp, index) =>
-                {
-                    var kpModel = kp.ToKnowledgePoint();
-                    kpModel.KpId = $"kp_{index:D4}";
-                    kpModel.BookRootId = documents.FirstOrDefault()?.BookRootId ?? string.Empty;
-                    return kpModel;
-                })
-                .ToList() ?? new List<KnowledgePoint>();
+            // 自检：验证响应数据
+            if (response?.KnowledgePoints == null || response.KnowledgePoints.Count == 0)
+            {
+                _logger.LogWarning("LLM 返回的知识点数为0，可能需要调整 prompt 或提供更完整的文档");
+            }
+            else
+            {
+                // 校验并清理知识点
+                var validPoints = new List<KnowledgePointDto>();
+                var seenTitles = new HashSet<string>();
 
-            return kpList;
+                foreach (var kp in response.KnowledgePoints)
+                {
+                    // 校验 snippet_ids
+                    if (kp.SnippetIds == null || kp.SnippetIds.Count == 0)
+                    {
+                        _logger.LogWarning("知识点 '{Title}' 缺少 snippet_ids，已跳过", kp.Title);
+                        continue;
+                    }
+
+                    // 校验并去重标题
+                    var normalizedTitle = kp.Title?.Trim() ?? "";
+                    if (string.IsNullOrEmpty(normalizedTitle))
+                    {
+                        _logger.LogWarning("知识点缺少标题，已跳过");
+                        continue;
+                    }
+
+                    if (seenTitles.Contains(normalizedTitle))
+                    {
+                        _logger.LogWarning("知识点标题重复 '{Title}'，已跳过", normalizedTitle);
+                        continue;
+                    }
+
+                    seenTitles.Add(normalizedTitle);
+                    validPoints.Add(kp);
+                }
+
+                _logger.LogInformation("自检完成，有效知识点: {ValidCount}/{TotalCount}", validPoints.Count, response.KnowledgePoints.Count);
+
+                // 将 DTO 转换为标准的 KnowledgePoint
+                var kpList = validPoints
+                    .Select((kp, index) =>
+                    {
+                        var kpModel = kp.ToKnowledgePoint();
+                        kpModel.KpId = $"kp_{index:D4}";
+                        kpModel.BookRootId = documents.FirstOrDefault()?.BookRootId ?? string.Empty;
+                        return kpModel;
+                    })
+                    .ToList();
+
+                return kpList;
+            }
+
+            return new List<KnowledgePoint>();
         }
         catch (Exception ex)
         {
