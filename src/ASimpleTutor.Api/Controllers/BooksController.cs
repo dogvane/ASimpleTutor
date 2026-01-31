@@ -101,14 +101,14 @@ public class BooksController : ControllerBase
                 bookRoot.Path);
 
             // 保存到持久化存储
-            store.Save(knowledgeSystem);
+            await store.SaveAsync(knowledgeSystem);
 
             AdminController.SetKnowledgeSystem(knowledgeSystem);
             KnowledgePointsController.SetKnowledgeSystem(knowledgeSystem);
             ChaptersController.SetKnowledgeSystem(knowledgeSystem);
             ExercisesController.SetKnowledgeSystem(knowledgeSystem);
 
-            _logger.LogInformation("知识体系构建完成，共 {Count} 个知识点",
+            _logger.LogInformation("知识体系构建完成，共 {Count} 个知识点，已保存到本地",
                 knowledgeSystem.KnowledgePoints.Count);
 
             return Ok(new { success = true, taskId = Guid.NewGuid().ToString(), status = "completed" });

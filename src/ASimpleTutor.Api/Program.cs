@@ -33,8 +33,9 @@ builder.Services.AddSingleton<ISourceTracker, SourceTracker>();
 builder.Services.AddSingleton<KnowledgeSystemStore>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<KnowledgeSystemStore>>();
-    var storagePath = config.StoragePath;
-    return new KnowledgeSystemStore(logger, storagePath);
+    // 默认使用项目根目录下的 datas 目录
+    var dataDirectory = config.StoragePath ?? "datas";
+    return new KnowledgeSystemStore(logger, dataDirectory);
 });
 builder.Services.AddSingleton<ILLMService>(sp =>
 {
@@ -74,8 +75,9 @@ builder.Services.AddSwaggerGen(c =>
 var app = builder.Build();
 
 // 启动时自动加载已保存的知识系统
-using (var scope = app.Services.CreateScope())
+async Task TryLoadSavedKnowledgeSystemAsync()
 {
+    using var scope = app.Services.CreateScope();
     var store = scope.ServiceProvider.GetRequiredService<KnowledgeSystemStore>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
@@ -84,7 +86,7 @@ using (var scope = app.Services.CreateScope())
     if (!string.IsNullOrEmpty(activeBookRootId) && store.Exists(activeBookRootId))
     {
         logger.LogInformation("发现已保存的知识系统，正在加载: {BookRootId}", activeBookRootId);
-        var knowledgeSystem = store.Load(activeBookRootId);
+        var knowledgeSystem = await store.LoadAsync(activeBookRootId);
         if (knowledgeSystem != null)
         {
             AdminController.SetKnowledgeSystem(knowledgeSystem);
@@ -99,6 +101,8 @@ using (var scope = app.Services.CreateScope())
         logger.LogInformation("未找到已保存的知识系统，请触发扫描: {BookRootId}", activeBookRootId);
     }
 }
+
+await TryLoadSavedKnowledgeSystemAsync();
 
 // 配置中间件
 if (app.Environment.IsDevelopment())

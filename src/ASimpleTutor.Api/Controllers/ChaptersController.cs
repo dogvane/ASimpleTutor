@@ -98,31 +98,59 @@ public class ChaptersController : ControllerBase
 
         var result = new List<ChapterTreeNode>();
 
-        if (node.Children.Count == 0)
+        // 只处理第一层和第二层
+        foreach (var child in node.Children)
         {
-            if (node.KnowledgePoint != null)
-            {
-                result.Add(new ChapterTreeNode
-                {
-                    Id = node.Id,
-                    Title = node.Title,
-                    Level = node.HeadingPath.Count,
-                    Expanded = false,
-                    Children = new List<ChapterTreeNode>()
-                });
-            }
-        }
-        else
-        {
-            foreach (var child in node.Children)
+            var headingCount = child.HeadingPath.Count;
+
+            // 第一层和第二层才显示
+            if (headingCount <= 2)
             {
                 result.Add(new ChapterTreeNode
                 {
                     Id = child.Id,
                     Title = child.Title,
-                    Level = child.HeadingPath.Count,
-                    Expanded = child.HeadingPath.Count <= 1,
-                    Children = BuildChapterTree(child)
+                    Level = headingCount,
+                    // 只有第一层默认展开
+                    Expanded = headingCount == 1,
+                    // 只对第一层递归构建子节点（第二层不展开子节点）
+                    Children = headingCount == 1 ? BuildSecondLevelTree(child) : new List<ChapterTreeNode>()
+                });
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 构建第二层树（不展开子节点）
+    /// </summary>
+    private static List<ChapterTreeNode> BuildSecondLevelTree(KnowledgeTreeNode? node)
+    {
+        if (node == null)
+            return new List<ChapterTreeNode>();
+
+        var result = new List<ChapterTreeNode>();
+
+        foreach (var child in node.Children)
+        {
+            var headingCount = child.HeadingPath.Count;
+
+            // 只显示第二层，不递归更深
+            if (headingCount <= 2)
+            {
+                // 第二层的 title 只显示最后一级的名称
+                var lastTitle = child.HeadingPath.Count > 0
+                    ? child.HeadingPath[child.HeadingPath.Count - 1]
+                    : child.Title;
+
+                result.Add(new ChapterTreeNode
+                {
+                    Id = child.Id,
+                    Title = lastTitle,
+                    Level = 2, // 第二层固定为 level 2
+                    Expanded = false,
+                    Children = new List<ChapterTreeNode>()
                 });
             }
         }

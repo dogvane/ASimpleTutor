@@ -13,21 +13,24 @@ public class KnowledgeSystemStore
     private readonly string _storePath;
     private readonly ILogger<KnowledgeSystemStore> _logger;
 
-    public KnowledgeSystemStore(ILogger<KnowledgeSystemStore> logger, string? storePath = null)
+    public KnowledgeSystemStore(ILogger<KnowledgeSystemStore> logger, string baseDataDirectory)
     {
         _logger = logger;
-        _storePath = storePath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data");
+        // 保存目录：datas/../saves/ 即相对于 datas 目录的 saves 文件夹
+        _storePath = Path.GetFullPath(Path.Combine(baseDataDirectory, "..", "saves"));
 
         if (!Directory.Exists(_storePath))
         {
             Directory.CreateDirectory(_storePath);
         }
+
+        _logger.LogInformation("知识系统存储目录: {Path}", _storePath);
     }
 
     /// <summary>
-    /// 保存知识系统到文件
+    /// 异步保存知识系统到文件
     /// </summary>
-    public void Save(KnowledgeSystem knowledgeSystem)
+    public async Task SaveAsync(KnowledgeSystem knowledgeSystem, CancellationToken cancellationToken = default)
     {
         if (knowledgeSystem == null)
         {
@@ -35,13 +38,23 @@ public class KnowledgeSystemStore
             return;
         }
 
-        var filePath = GetFilePath(knowledgeSystem.BookRootId);
+        var directory = Path.Combine(_storePath, knowledgeSystem.BookRootId);
+        Directory.CreateDirectory(directory);
+
+        _logger.LogInformation("开始保存知识系统: {BookRootId}", knowledgeSystem.BookRootId);
 
         try
         {
-            var json = SerializeKnowledgeSystem(knowledgeSystem);
-            File.WriteAllText(filePath, json);
-            _logger.LogInformation("知识系统已保存: {BookRootId} -> {FilePath}", knowledgeSystem.BookRootId, filePath);
+            // 并行保存知识体系和原文片段
+            var saveKnowledgeTask = SaveKnowledgeSystemAsync(knowledgeSystem, directory, cancellationToken);
+            var saveSnippetsTask = SaveSnippetsAsync(knowledgeSystem.Snippets, directory, cancellationToken);
+
+            await Task.WhenAll(saveKnowledgeTask, saveSnippetsTask);
+
+            _logger.LogInformation("知识系统保存完成: {BookRootId}, 知识点: {KpCount}, 原文片段: {SnippetCount}",
+                knowledgeSystem.BookRootId,
+                knowledgeSystem.KnowledgePoints.Count,
+                knowledgeSystem.Snippets.Count);
         }
         catch (Exception ex)
         {
@@ -51,24 +64,48 @@ public class KnowledgeSystemStore
     }
 
     /// <summary>
-    /// 从文件加载知识系统
+    /// 异步从文件加载知识系统
     /// </summary>
-    public KnowledgeSystem? Load(string bookRootId)
+    public async Task<KnowledgeSystem?> LoadAsync(string bookRootId, CancellationToken cancellationToken = default)
     {
-        var filePath = GetFilePath(bookRootId);
+        var directory = Path.Combine(_storePath, bookRootId);
 
-        if (!File.Exists(filePath))
+        if (!Directory.Exists(directory))
         {
-            _logger.LogInformation("未找到知识系统文件: {FilePath}", filePath);
+            _logger.LogInformation("知识系统保存目录不存在: {Directory}", directory);
             return null;
         }
 
+        _logger.LogInformation("开始加载知识系统: {BookRootId}", bookRootId);
+
         try
         {
-            var json = File.ReadAllText(filePath);
-            var knowledgeSystem = DeserializeKnowledgeSystem(json);
-            _logger.LogInformation("知识系统已加载: {BookRootId}，共 {Count} 个知识点",
-                bookRootId, knowledgeSystem?.KnowledgePoints.Count ?? 0);
+            // 并行加载知识体系和原文片段
+            var loadKnowledgeTask = LoadKnowledgeSystemAsync(directory, cancellationToken);
+            var loadSnippetsTask = LoadSnippetsAsync(directory, cancellationToken);
+
+            await Task.WhenAll(loadKnowledgeTask, loadSnippetsTask);
+
+            var knowledgeSystem = loadKnowledgeTask.Result;
+            var snippets = loadSnippetsTask.Result;
+
+            if (knowledgeSystem == null)
+            {
+                _logger.LogWarning("知识系统文件加载失败: {BookRootId}", bookRootId);
+                return null;
+            }
+
+            // 合并原文片段
+            if (snippets != null)
+            {
+                knowledgeSystem.Snippets = snippets;
+            }
+
+            _logger.LogInformation("知识系统加载完成: {BookRootId}, 知识点: {KpCount}, 原文片段: {SnippetCount}",
+                bookRootId,
+                knowledgeSystem.KnowledgePoints.Count,
+                knowledgeSystem.Snippets.Count);
+
             return knowledgeSystem;
         }
         catch (Exception ex)
@@ -79,12 +116,29 @@ public class KnowledgeSystemStore
     }
 
     /// <summary>
+    /// 保存知识系统到文件（同步方法，保持向后兼容）
+    /// </summary>
+    public void Save(KnowledgeSystem knowledgeSystem)
+    {
+        SaveAsync(knowledgeSystem).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// 从文件加载知识系统（同步方法，保持向后兼容）
+    /// </summary>
+    public KnowledgeSystem? Load(string bookRootId)
+    {
+        return LoadAsync(bookRootId).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
     /// 检查是否存在已保存的知识系统
     /// </summary>
     public bool Exists(string bookRootId)
     {
-        var filePath = GetFilePath(bookRootId);
-        return File.Exists(filePath);
+        var directory = Path.Combine(_storePath, bookRootId);
+        var knowledgeFile = Path.Combine(directory, "knowledge-system.json");
+        return File.Exists(knowledgeFile);
     }
 
     /// <summary>
@@ -92,11 +146,11 @@ public class KnowledgeSystemStore
     /// </summary>
     public bool Delete(string bookRootId)
     {
-        var filePath = GetFilePath(bookRootId);
+        var directory = Path.Combine(_storePath, bookRootId);
 
-        if (File.Exists(filePath))
+        if (Directory.Exists(directory))
         {
-            File.Delete(filePath);
+            Directory.Delete(directory, true);
             _logger.LogInformation("知识系统已删除: {BookRootId}", bookRootId);
             return true;
         }
@@ -114,196 +168,107 @@ public class KnowledgeSystemStore
             return new List<string>();
         }
 
-        return Directory.GetFiles(_storePath, "knowledge_*.json")
-            .Select(Path.GetFileNameWithoutExtension)
-            .Select(name => name?.Replace("knowledge_", "") ?? string.Empty)
-            .Where(id => !string.IsNullOrEmpty(id))
+        return Directory.GetDirectories(_storePath)
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrEmpty(name))
+            .Cast<string>()
             .ToList();
     }
 
-    private string GetFilePath(string bookRootId)
+    private async Task SaveKnowledgeSystemAsync(KnowledgeSystem knowledgeSystem, string directory, CancellationToken cancellationToken)
     {
-        // 清理文件名中的非法字符
-        var safeId = string.Join("_", bookRootId.Split(Path.GetInvalidFileNameChars()));
-        return Path.Combine(_storePath, $"knowledge_{safeId}.json");
-    }
-
-    private string SerializeKnowledgeSystem(KnowledgeSystem ks)
-    {
-        var settings = new JsonSerializerSettings
+        // 创建保存模型（排除 Snippets，因为它们单独保存）
+        var saveModel = new KnowledgeSystemSaveModel
         {
-            Formatting = Formatting.Indented,
-            ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+            BookRootId = knowledgeSystem.BookRootId,
+            KnowledgePoints = knowledgeSystem.KnowledgePoints
         };
 
-        return JsonConvert.SerializeObject(ks, settings);
+        var filePath = Path.Combine(directory, "knowledge-system.json");
+        var json = JsonConvert.SerializeObject(saveModel, Formatting.Indented);
+        await File.WriteAllTextAsync(filePath, json, cancellationToken);
     }
 
-    private KnowledgeSystem? DeserializeKnowledgeSystem(string json)
+    private async Task SaveSnippetsAsync(Dictionary<string, SourceSnippet> snippets, string directory, CancellationToken cancellationToken)
     {
-        // 自定义反序列化，处理循环引用和版本兼容
-        var obj = JObject.Parse(json);
-
-        var knowledgeSystem = new KnowledgeSystem
+        if (snippets.Count == 0)
         {
-            BookRootId = obj.Value<string>("bookRootId") ?? string.Empty
+            return;
+        }
+
+        var saveModel = new SnippetsSaveModel
+        {
+            Snippets = snippets
         };
 
-        // 反序列化知识点列表
-        var kpArray = obj["knowledgePoints"] as JArray;
-        if (kpArray != null)
-        {
-            foreach (var kpToken in kpArray)
-            {
-                var kp = ParseKnowledgePoint(kpToken);
-                if (kp != null)
-                {
-                    knowledgeSystem.KnowledgePoints.Add(kp);
-                }
-            }
-        }
-
-        // 反序列化原文片段字典
-        var snippetsObj = obj["snippets"] as JObject;
-        if (snippetsObj != null)
-        {
-            foreach (var prop in snippetsObj.Properties())
-            {
-                var snippet = ParseSourceSnippet(prop.Value);
-                if (snippet != null)
-                {
-                    knowledgeSystem.Snippets[prop.Name] = snippet;
-                }
-            }
-        }
-
-        // 构建知识树
-        knowledgeSystem.Tree = BuildTreeFromKnowledgePoints(knowledgeSystem.KnowledgePoints);
-
-        return knowledgeSystem;
+        var filePath = Path.Combine(directory, "snippets.json");
+        var json = JsonConvert.SerializeObject(saveModel, Formatting.Indented);
+        await File.WriteAllTextAsync(filePath, json, cancellationToken);
     }
 
-    private KnowledgePoint? ParseKnowledgePoint(JToken token)
+    private async Task<KnowledgeSystem?> LoadKnowledgeSystemAsync(string directory, CancellationToken cancellationToken)
     {
-        try
+        var filePath = Path.Combine(directory, "knowledge-system.json");
+
+        if (!File.Exists(filePath))
         {
-            return new KnowledgePoint
-            {
-                KpId = token.Value<string>("kpId") ?? string.Empty,
-                BookRootId = token.Value<string>("bookRootId") ?? string.Empty,
-                Title = token.Value<string>("title") ?? string.Empty,
-                Aliases = token["aliases"]?.ToObject<List<string>>() ?? new List<string>(),
-                ChapterPath = token["chapterPath"]?.ToObject<List<string>>() ?? new List<string>(),
-                Importance = token.Value<float?>("importance") ?? 0.5f,
-                SnippetIds = token["snippetIds"]?.ToObject<List<string>>() ?? new List<string>(),
-                Summary = ParseSummary(token["summary"]),
-                Levels = ParseContentLevels(token["levels"])
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "解析知识点失败");
+            _logger.LogWarning("知识系统文件不存在: {Path}", filePath);
             return null;
         }
-    }
 
-    private Summary? ParseSummary(JToken? token)
-    {
-        if (token == null) return null;
+        var json = await File.ReadAllTextAsync(filePath, cancellationToken);
+        var saveModel = JsonConvert.DeserializeObject<KnowledgeSystemSaveModel>(json);
 
-        try
+        if (saveModel == null)
         {
-            return new Summary
-            {
-                Definition = token.Value<string>("definition") ?? string.Empty,
-                KeyPoints = token["keyPoints"]?.ToObject<List<string>>() ?? new List<string>(),
-                Pitfalls = token["pitfalls"]?.ToObject<List<string>>() ?? new List<string>()
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "解析 Summary 失败");
             return null;
         }
-    }
 
-    private List<ContentLevel> ParseContentLevels(JToken? token)
-    {
-        if (token == null) return new List<ContentLevel>();
-
-        try
+        return new KnowledgeSystem
         {
-            return token.ToObject<List<ContentLevel>>() ?? new List<ContentLevel>();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "解析 Levels 失败");
-            return new List<ContentLevel>();
-        }
-    }
-
-    private SourceSnippet? ParseSourceSnippet(JToken? token)
-    {
-        if (token == null) return null;
-
-        try
-        {
-            return new SourceSnippet
-            {
-                SnippetId = token.Value<string>("snippetId") ?? string.Empty,
-                BookRootId = token.Value<string>("bookRootId") ?? string.Empty,
-                DocId = token.Value<string>("docId") ?? string.Empty,
-                Content = token.Value<string>("content") ?? string.Empty,
-                FilePath = token.Value<string>("filePath") ?? string.Empty,
-                HeadingPath = token["headingPath"]?.ToObject<List<string>>() ?? new List<string>(),
-                StartLine = token.Value<int?>("startLine") ?? token.Value<int?>("lineStart") ?? 0,
-                EndLine = token.Value<int?>("endLine") ?? token.Value<int?>("lineEnd") ?? 0,
-                ChunkId = token.Value<string>("chunkId")
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "解析原文片段失败");
-            return null;
-        }
-    }
-
-    private KnowledgeTreeNode BuildTreeFromKnowledgePoints(List<KnowledgePoint> knowledgePoints)
-    {
-        var root = new KnowledgeTreeNode
-        {
-            Id = "root",
-            Title = "根",
-            HeadingPath = new List<string>()
+            BookRootId = saveModel.BookRootId,
+            KnowledgePoints = saveModel.KnowledgePoints ?? new List<KnowledgePoint>(),
+            Snippets = new Dictionary<string, SourceSnippet>(),
+            Tree = null // 重建
         };
+    }
 
-        foreach (var kp in knowledgePoints)
+    private async Task<Dictionary<string, SourceSnippet>?> LoadSnippetsAsync(string directory, CancellationToken cancellationToken)
+    {
+        var filePath = Path.Combine(directory, "snippets.json");
+
+        if (!File.Exists(filePath))
         {
-            var current = root;
-
-            foreach (var chapter in kp.ChapterPath)
-            {
-                var existingChild = current.Children.FirstOrDefault(c => c.Title == chapter);
-                if (existingChild == null)
-                {
-                    var newNode = new KnowledgeTreeNode
-                    {
-                        Id = $"{current.Id}_{chapter}",
-                        Title = chapter,
-                        HeadingPath = new List<string>(current.HeadingPath) { chapter }
-                    };
-                    current.Children.Add(newNode);
-                    current = newNode;
-                }
-                else
-                {
-                    current = existingChild;
-                }
-            }
-
-            current.KnowledgePoint = kp;
+            return new Dictionary<string, SourceSnippet>();
         }
 
-        return root;
+        var json = await File.ReadAllTextAsync(filePath, cancellationToken);
+        var saveModel = JsonConvert.DeserializeObject<SnippetsSaveModel>(json);
+
+        return saveModel?.Snippets ?? new Dictionary<string, SourceSnippet>();
     }
+}
+
+/// <summary>
+/// 知识系统保存模型
+/// </summary>
+internal class KnowledgeSystemSaveModel
+{
+    [JsonProperty("book_root_id")]
+    public string BookRootId { get; set; } = string.Empty;
+
+    [JsonProperty("knowledge_points")]
+    public List<KnowledgePoint> KnowledgePoints { get; set; } = new();
+
+    [JsonProperty("saved_at")]
+    public DateTime SavedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// 原文片段保存模型
+/// </summary>
+internal class SnippetsSaveModel
+{
+    [JsonProperty("snippets")]
+    public Dictionary<string, SourceSnippet> Snippets { get; set; } = new();
 }

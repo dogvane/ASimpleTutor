@@ -224,13 +224,18 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 
                 _logger.LogInformation("自检完成，有效知识点: {ValidCount}/{TotalCount}", validPoints.Count, response.KnowledgePoints.Count);
 
-                // 将 DTO 转换为标准的 KnowledgePoint
+                // 将 DTO 转换为标准的 KnowledgePoint，截取章节路径到前两层
                 var kpList = validPoints
                     .Select((kp, index) =>
                     {
                         var kpModel = kp.ToKnowledgePoint();
                         kpModel.KpId = $"kp_{index:D4}";
                         kpModel.BookRootId = documents.FirstOrDefault()?.BookRootId ?? string.Empty;
+                        // 截取章节路径到前两层
+                        if (kpModel.ChapterPath.Count > 2)
+                        {
+                            kpModel.ChapterPath = kpModel.ChapterPath.Take(2).ToList();
+                        }
                         return kpModel;
                     })
                     .ToList();
