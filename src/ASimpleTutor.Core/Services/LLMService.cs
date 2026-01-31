@@ -41,9 +41,18 @@ public class LLMService : ILLMService
 
     public async Task<string> ChatAsync(string systemPrompt, string userMessage, CancellationToken cancellationToken = default)
     {
+        return await ChatWithOptionsAsync(systemPrompt, userMessage, temperature: null, cancellationToken);
+    }
+
+    public async Task<string> ChatWithOptionsAsync(
+        string systemPrompt,
+        string userMessage,
+        float? temperature,
+        CancellationToken cancellationToken = default)
+    {
         try
         {
-            _logger.LogDebug("调用 LLM，模型: {Model}", _model);
+            _logger.LogDebug("调用 LLM，模型: {Model}, 温度: {Temp}", _model, temperature ?? 0.7f);
 
             var messages = new List<ChatMessage>
             {
@@ -51,7 +60,14 @@ public class LLMService : ILLMService
                 ChatMessage.CreateUserMessage(userMessage)
             };
 
-            var response = await _client.CompleteChatAsync(messages, cancellationToken: cancellationToken);
+            var options = new ChatCompletionOptions();
+
+            if (temperature.HasValue)
+            {
+                options.Temperature = temperature.Value;
+            }
+
+            var response = await _client.CompleteChatAsync(messages, options, cancellationToken);
 
             var content = response.Value.Content[0].Text;
             _logger.LogDebug("LLM 响应长度: {Length}", content?.Length ?? 0);
@@ -69,6 +85,9 @@ public class LLMService : ILLMService
         const int maxRetries = 2;
         Exception? lastException = null;
 
+        // 重试时使用的温度配置：每次重试增加温度，增加创造性
+        var retryTemperatures = new float?[] { 0.7f, 1.0f, 1.2f };
+
         var jsonPrompt = $@"{systemPrompt}
 
 重要：你的响应必须是有效的 JSON 格式，不要包含任何其他文本或解释。";
@@ -77,7 +96,8 @@ public class LLMService : ILLMService
         {
             try
             {
-                var response = await ChatAsync(jsonPrompt, userMessage, cancellationToken);
+                float? temperature = retry > 0 ? retryTemperatures[retry] : null;
+                var response = await ChatWithOptionsAsync(jsonPrompt, userMessage, temperature, cancellationToken);
 
                 // 清理可能的 markdown 代码块标记
                 var cleanedResponse = response.Trim();
@@ -110,7 +130,9 @@ public class LLMService : ILLMService
             catch (Exception ex) when (retry < maxRetries)
             {
                 lastException = ex;
-                _logger.LogWarning(ex, "JSON 解析失败，第 {Retry} 次重试 (共 {MaxRetries} 次)", retry + 1, maxRetries);
+                float newTemp = retryTemperatures[retry + 1] ?? 0.7f;
+                _logger.LogWarning(ex, "JSON 解析失败，第 {Retry} 次重试 (共 {MaxRetries} 次)，下次重试将使用温度: {Temp}",
+                    retry + 1, maxRetries, newTemp);
             }
         }
 

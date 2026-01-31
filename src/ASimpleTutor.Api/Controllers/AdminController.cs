@@ -23,7 +23,7 @@ public class AdminController : ControllerBase
         }
     }
 
-    public static void SetKnowledgeSystem(KnowledgeSystem ks)
+    public static void SetKnowledgeSystem(KnowledgeSystem? ks)
     {
         lock (_lock)
         {

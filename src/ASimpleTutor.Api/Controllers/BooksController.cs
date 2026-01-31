@@ -1,5 +1,6 @@
 using ASimpleTutor.Api.Configuration;
 using ASimpleTutor.Core.Interfaces;
+using ASimpleTutor.Core.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ASimpleTutor.Api.Controllers;
@@ -91,6 +92,7 @@ public class BooksController : ControllerBase
         {
             var knowledgeBuilder = serviceProvider.GetRequiredService<IKnowledgeBuilder>();
             var sourceTracker = serviceProvider.GetRequiredService<ISourceTracker>();
+            var store = serviceProvider.GetRequiredService<KnowledgeSystemStore>();
 
             sourceTracker.Clear();
 
@@ -98,7 +100,13 @@ public class BooksController : ControllerBase
                 _config.ActiveBookRootId,
                 bookRoot.Path);
 
+            // 保存到持久化存储
+            store.Save(knowledgeSystem);
+
             AdminController.SetKnowledgeSystem(knowledgeSystem);
+            KnowledgePointsController.SetKnowledgeSystem(knowledgeSystem);
+            ChaptersController.SetKnowledgeSystem(knowledgeSystem);
+            ExercisesController.SetKnowledgeSystem(knowledgeSystem);
 
             _logger.LogInformation("知识体系构建完成，共 {Count} 个知识点",
                 knowledgeSystem.KnowledgePoints.Count);
@@ -110,6 +118,35 @@ public class BooksController : ControllerBase
             _logger.LogError(ex, "知识体系构建失败");
             return Problem(new { error = new { code = "SCAN_FAILED", message = "知识体系构建失败: " + ex.Message } }.ToString());
         }
+    }
+
+    /// <summary>
+    /// 清除已保存的知识系统
+    /// </summary>
+    [HttpDelete("cache")]
+    public IActionResult ClearCache([FromServices] IServiceProvider serviceProvider)
+    {
+        if (string.IsNullOrEmpty(_config.ActiveBookRootId))
+        {
+            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "请先激活书籍目录" } });
+        }
+
+        var store = serviceProvider.GetRequiredService<KnowledgeSystemStore>();
+        var deleted = store.Delete(_config.ActiveBookRootId);
+
+        if (deleted)
+        {
+            // 清除内存中的知识系统
+            AdminController.SetKnowledgeSystem(null);
+            KnowledgePointsController.SetKnowledgeSystem(null);
+            ChaptersController.SetKnowledgeSystem(null);
+            ExercisesController.SetKnowledgeSystem(null);
+
+            _logger.LogInformation("已清除知识系统缓存: {BookRootId}", _config.ActiveBookRootId);
+            return Ok(new { success = true, message = "缓存已清除" });
+        }
+
+        return Ok(new { success = false, message = "无缓存可清除" });
     }
 }
 

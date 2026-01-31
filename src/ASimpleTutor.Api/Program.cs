@@ -1,4 +1,5 @@
 using ASimpleTutor.Api.Configuration;
+using ASimpleTutor.Api.Controllers;
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Services;
 using Swashbuckle.AspNetCore.SwaggerGen;
@@ -29,6 +30,12 @@ builder.Services.AddLogging(logging =>
 // 注册 Core 服务
 builder.Services.AddSingleton<IScannerService, MarkdownScanner>();
 builder.Services.AddSingleton<ISourceTracker, SourceTracker>();
+builder.Services.AddSingleton<KnowledgeSystemStore>(sp =>
+{
+    var logger = sp.GetRequiredService<ILogger<KnowledgeSystemStore>>();
+    var storagePath = config.StoragePath;
+    return new KnowledgeSystemStore(logger, storagePath);
+});
 builder.Services.AddSingleton<ILLMService>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<LLMService>>();
@@ -65,6 +72,33 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+
+// 启动时自动加载已保存的知识系统
+using (var scope = app.Services.CreateScope())
+{
+    var store = scope.ServiceProvider.GetRequiredService<KnowledgeSystemStore>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    // 获取已激活的书籍目录
+    var activeBookRootId = config.ActiveBookRootId;
+    if (!string.IsNullOrEmpty(activeBookRootId) && store.Exists(activeBookRootId))
+    {
+        logger.LogInformation("发现已保存的知识系统，正在加载: {BookRootId}", activeBookRootId);
+        var knowledgeSystem = store.Load(activeBookRootId);
+        if (knowledgeSystem != null)
+        {
+            AdminController.SetKnowledgeSystem(knowledgeSystem);
+            KnowledgePointsController.SetKnowledgeSystem(knowledgeSystem);
+            ChaptersController.SetKnowledgeSystem(knowledgeSystem);
+            ExercisesController.SetKnowledgeSystem(knowledgeSystem);
+            logger.LogInformation("知识系统加载完成，共 {Count} 个知识点", knowledgeSystem.KnowledgePoints.Count);
+        }
+    }
+    else if (!string.IsNullOrEmpty(activeBookRootId))
+    {
+        logger.LogInformation("未找到已保存的知识系统，请触发扫描: {BookRootId}", activeBookRootId);
+    }
+}
 
 // 配置中间件
 if (app.Environment.IsDevelopment())

@@ -78,11 +78,15 @@ public class KnowledgeBuilder : IKnowledgeBuilder
             var knowledgePoints = await ExtractKnowledgePointsAsync(documents, cancellationToken);
             knowledgeSystem.KnowledgePoints = knowledgePoints;
 
-            // 4. 构建知识树
+            // 4. 为每个知识点预生成学习内容
+            _logger.LogInformation("为知识点预生成学习内容");
+            await GenerateLearningContentForPointsAsync(knowledgePoints, cancellationToken);
+
+            // 5. 构建知识树
             _logger.LogInformation("构建知识树");
             knowledgeSystem.Tree = BuildKnowledgeTree(knowledgePoints);
 
-            // 5. 收集所有原文片段
+            // 6. 收集所有原文片段
             _logger.LogInformation("收集原文片段");
             foreach (var kp in knowledgePoints)
             {
@@ -241,6 +245,118 @@ public class KnowledgeBuilder : IKnowledgeBuilder
             _logger.LogError(ex, "提取知识点失败");
             return new List<KnowledgePoint>();
         }
+    }
+
+    private async Task GenerateLearningContentForPointsAsync(List<KnowledgePoint> knowledgePoints, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("开始为 {Count} 个知识点生成学习内容", knowledgePoints.Count);
+
+        foreach (var kp in knowledgePoints)
+        {
+            try
+            {
+                _logger.LogInformation("生成学习内容: {KpId}", kp.KpId);
+
+                // 获取原文片段
+                var snippets = _sourceTracker.GetSources(kp.SnippetIds);
+                var snippetTexts = string.Join("\n\n", snippets.Select(s => s.Content));
+
+                // 生成学习内容
+                var content = await GenerateLearningContentAsync(kp, snippetTexts, cancellationToken);
+
+                if (content != null)
+                {
+                    kp.Summary = content.Summary;
+                    kp.Levels = content.Levels;
+                }
+                else
+                {
+                    // 降级：设置基本内容
+                    kp.Summary = new Summary
+                    {
+                        Definition = $"这是关于 {kp.Title} 的知识点，位于 {string.Join(" > ", kp.ChapterPath)} 章节。",
+                        KeyPoints = new List<string> { "内容生成失败，请查看原文" },
+                        Pitfalls = new List<string>()
+                    };
+                    kp.Levels = new List<ContentLevel>
+                    {
+                        new ContentLevel { Level = 1, Title = "概览", Content = "无法生成层次化内容，请查看原文片段" }
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "知识点 {KpId} 学习内容生成失败，使用降级内容", kp.KpId);
+                // 降级：设置基本内容
+                kp.Summary = new Summary
+                {
+                    Definition = $"这是关于 {kp.Title} 的知识点，位于 {string.Join(" > ", kp.ChapterPath)} 章节。",
+                    KeyPoints = new List<string> { "内容生成失败，请查看原文" },
+                    Pitfalls = new List<string>()
+                };
+                kp.Levels = new List<ContentLevel>
+                {
+                    new ContentLevel { Level = 1, Title = "概览", Content = "无法生成层次化内容，请查看原文片段" }
+                };
+            }
+        }
+
+        _logger.LogInformation("学习内容生成完成");
+    }
+
+    private async Task<LearningContentResponse?> GenerateLearningContentAsync(
+        KnowledgePoint kp,
+        string snippetTexts,
+        CancellationToken cancellationToken)
+    {
+        var systemPrompt = @"你是一个专业的学习内容生成专家。你的任务是为用户生成结构化的学习内容。
+
+请以 JSON 格式输出，结构如下：
+{
+  ""summary"": {
+    ""definition"": ""知识点的精确定义（1-3句，必须填写）"",
+    ""key_points"": [""核心要点1"", ""核心要点2"", ""核心要点3""],
+    ""pitfalls"": [""常见误区1"", ""常见误区2""]
+  },
+  ""levels"": [
+    {
+      ""level"": 1,
+      ""title"": ""概览"",
+      ""content"": ""面向第一次接触的简要介绍""
+    },
+    {
+      ""level"": 2,
+      ""title"": ""详细"",
+      ""content"": ""解释关键机制、步骤、例子""
+    },
+    {
+      ""level"": 3,
+      ""title"": ""深入"",
+      ""content"": ""边界条件、对比、推导""
+    }
+  ]
+}
+
+生成原则：
+1. 只基于提供的原文片段，不引入外部知识
+2. 定义要简洁准确，要点要清晰实用
+3. 常见误区要具体且有针对性
+4. 层次化内容要循序渐进
+5. summary.definition 必须填写，不能为空
+
+自检要求：
+- summary.definition 不能为空
+- levels 至少包含 level=1 的内容
+- 如果无法生成有效内容，请返回空对象 {} 而非报错";
+
+        var userMessage = $"知识点标题：{kp.Title}\n" +
+                          $"所属章节：{string.Join(" > ", kp.ChapterPath)}\n" +
+                          $"相关原文片段：\n{snippetTexts}";
+
+        return await _llmService.ChatJsonAsync<LearningContentResponse>(
+            systemPrompt,
+            userMessage,
+            cancellationToken);
     }
 
     private string ReconstructDocumentContent(Document doc)

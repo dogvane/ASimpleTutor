@@ -14,7 +14,7 @@ public class ChaptersController : ControllerBase
     private static KnowledgeSystem? _knowledgeSystem;
     private static readonly object _lock = new();
 
-    public static void SetKnowledgeSystem(KnowledgeSystem ks)
+    public static void SetKnowledgeSystem(KnowledgeSystem? ks)
     {
         lock (_lock)
         {
@@ -162,8 +162,12 @@ public class ChaptersController : ControllerBase
         if (node == null)
             return result;
 
-        if (node.Id == chapterId || node.HeadingPath.Any(h => h.Contains(chapterId)))
+        // 检查当前节点是否匹配（精确匹配 ID 或 ID 是当前节点的路径前缀）
+        bool isMatch = node.Id == chapterId || node.Id.StartsWith(chapterId + "_");
+
+        if (isMatch)
         {
+            // 当前节点匹配，收集它的知识点和所有子节点的知识点
             if (node.KnowledgePoint != null)
             {
                 result.Add(node.KnowledgePoint);
@@ -175,6 +179,7 @@ public class ChaptersController : ControllerBase
         }
         else
         {
+            // 当前节点不匹配，继续在子节点中查找
             foreach (var child in node.Children)
             {
                 result.AddRange(CollectKnowledgePoints(child, chapterId));

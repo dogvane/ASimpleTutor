@@ -16,7 +16,7 @@ public class ExercisesController : ControllerBase
     private static readonly Dictionary<string, Exercise> _exerciseCache = new();
     private static readonly object _lock = new();
 
-    public static void SetKnowledgeSystem(KnowledgeSystem ks)
+    public static void SetKnowledgeSystem(KnowledgeSystem? ks)
     {
         lock (_lock)
         {

@@ -41,6 +41,16 @@ public class KnowledgePoint
     public List<string> SnippetIds { get; set; } = new();
 
     /// <summary>
+    /// 预生成的学习内容（定义、要点、误区等）
+    /// </summary>
+    public Summary? Summary { get; set; }
+
+    /// <summary>
+    /// 预生成的层次化内容（L1/L2/L3）
+    /// </summary>
+    public List<ContentLevel> Levels { get; set; } = new();
+
+    /// <summary>
     /// 与其他知识点的关联关系
     /// </summary>
     public List<KnowledgeRelation> Relations { get; set; } = new();
