@@ -1,5 +1,6 @@
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
+using ASimpleTutor.Core.Models.Dto;
 using Microsoft.Extensions.Logging;
 using OpenAI;
 using OpenAI.Chat;
@@ -85,18 +86,18 @@ public class LLMService : ILLMService
         const int maxRetries = 2;
         Exception? lastException = null;
 
-        // 重试时使用的温度配置：每次重试增加温度，增加创造性
-        var retryTemperatures = new float?[] { 0.7f, 1.0f, 1.2f };
+        // 重试时使用的温度配置：每次重试降低温度，提高确定性
+        var retryTemperatures = new float?[] { null, 0.5f, 0.3f };
 
         var jsonPrompt = $@"{systemPrompt}
 
-重要：你的响应必须是有效的 JSON 格式，不要包含任何其他文本或解释。";
+ 重要：你的响应必须是有效的 JSON 格式，不要包含任何其他文本或解释。";
 
         for (int retry = 0; retry <= maxRetries; retry++)
         {
             try
             {
-                float? temperature = retry > 0 ? retryTemperatures[retry] : null;
+                float? temperature = retryTemperatures[retry];
                 var response = await ChatWithOptionsAsync(jsonPrompt, userMessage, temperature, cancellationToken);
 
                 // 清理可能的 markdown 代码块标记
@@ -116,37 +117,80 @@ public class LLMService : ILLMService
 
                 cleanedResponse = cleanedResponse.Trim();
 
-                // 记录原始响应（始终记录，用于调试）
-                var displayResponse = cleanedResponse.Length > 1000 ? cleanedResponse.Substring(0, 1000) + "..." : cleanedResponse;
-                _logger.LogInformation("LLM 原始响应: {Response}", displayResponse);
-
                 var result = Newtonsoft.Json.JsonConvert.DeserializeObject<T>(cleanedResponse)
                            ?? throw new InvalidOperationException("JSON 解析结果为空");
 
-                // 记录解析结果
                 _logger.LogInformation("JSON 解析成功，类型: {Type}", typeof(T).Name);
                 return result;
             }
             catch (Exception ex) when (retry < maxRetries)
             {
                 lastException = ex;
-                float newTemp = retryTemperatures[retry + 1] ?? 0.7f;
+                float newTemp = retryTemperatures[retry + 1] ?? 0.5f;
                 _logger.LogWarning(ex, "JSON 解析失败，第 {Retry} 次重试 (共 {MaxRetries} 次)，下次重试将使用温度: {Temp}",
                     retry + 1, maxRetries, newTemp);
             }
         }
 
-        // 所有重试都失败，记录原始响应并抛出异常
         _logger.LogError(lastException, "JSON 解析重试失败，不再重试");
 
-        // 降级：尝试从文本中提取 JSON
+        var fallbackResponse = CreateFallbackResponse<T>();
+        return fallbackResponse;
+    }
+
+    public async Task<T> ChatJsonAsync<T>(string systemPrompt, string userMessage, float temperature, CancellationToken cancellationToken = default) where T : class
+    {
+        const int maxRetries = 1;
+        Exception? lastException = null;
+
+        var jsonPrompt = $@"{systemPrompt}
+
+ 重要：你的响应必须是有效的 JSON 格式，不要包含任何其他文本或解释。";
+
+        for (int retry = 0; retry <= maxRetries; retry++)
+        {
+            try
+            {
+                var response = await ChatWithOptionsAsync(jsonPrompt, userMessage, temperature, cancellationToken);
+
+                var cleanedResponse = response.Trim();
+                if (cleanedResponse.StartsWith("```json"))
+                {
+                    cleanedResponse = cleanedResponse.Substring(7);
+                }
+                if (cleanedResponse.StartsWith("```"))
+                {
+                    cleanedResponse = cleanedResponse.Substring(3);
+                }
+                if (cleanedResponse.EndsWith("```"))
+                {
+                    cleanedResponse = cleanedResponse.Substring(0, cleanedResponse.Length - 3);
+                }
+
+                cleanedResponse = cleanedResponse.Trim();
+
+                var result = Newtonsoft.Json.JsonConvert.DeserializeObject<T>(cleanedResponse)
+                           ?? throw new InvalidOperationException("JSON 解析结果为空");
+
+                _logger.LogInformation("JSON 解析成功，类型: {Type}", typeof(T).Name);
+                return result;
+            }
+            catch (Exception ex) when (retry < maxRetries)
+            {
+                lastException = ex;
+                _logger.LogWarning(ex, "JSON 解析失败，第 {Retry} 次重试 (共 {MaxRetries} 次)",
+                    retry + 1, maxRetries);
+            }
+        }
+
+        _logger.LogError(lastException, "JSON 解析重试失败，不再重试");
+
         var fallbackResponse = CreateFallbackResponse<T>();
         return fallbackResponse;
     }
 
     private static T CreateFallbackResponse<T>() where T : class
     {
-        // 创建降级响应
         if (typeof(T) == typeof(LearningPack))
         {
             return new LearningPack
@@ -174,14 +218,12 @@ public class LLMService : ILLMService
             return new List<Exercise>() as T ?? throw new InvalidOperationException();
         }
 
-        // 支持 KnowledgePointsResponse 类型（通过反射获取内部类型）
         if (typeof(T).Name == "KnowledgePointsResponse")
         {
-            // 创建降级响应，使用动态类型检测
-            var fallback = new
+            var fallback = new KnowledgePointsResponse
             {
                 SchemaVersion = "1.0",
-                KnowledgePoints = new object[0]
+                KnowledgePoints = new List<KnowledgePointDto>()
             };
             return fallback as T ?? throw new InvalidOperationException();
         }

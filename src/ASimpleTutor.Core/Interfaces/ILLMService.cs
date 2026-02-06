@@ -16,4 +16,9 @@ public interface ILLMService
     /// 发送聊天请求并期望 JSON 响应
     /// </summary>
     Task<T> ChatJsonAsync<T>(string systemPrompt, string userMessage, CancellationToken cancellationToken = default) where T : class;
+
+    /// <summary>
+    /// 发送聊天请求并期望 JSON 响应（可配置温度）
+    /// </summary>
+    Task<T> ChatJsonAsync<T>(string systemPrompt, string userMessage, float temperature, CancellationToken cancellationToken = default) where T : class;
 }

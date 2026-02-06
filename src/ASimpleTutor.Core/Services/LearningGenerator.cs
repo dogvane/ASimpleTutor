@@ -1,7 +1,7 @@
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
+using ASimpleTutor.Core.Models.Dto;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 
 namespace ASimpleTutor.Core.Services;
 
@@ -76,7 +76,7 @@ public class LearningGenerator : ILearningGenerator
         return learningPack;
     }
 
-    private async Task<LearningContentResponse?> GenerateLearningContentAsync(
+    private async Task<LearningContentDto?> GenerateLearningContentAsync(
         KnowledgePoint kp,
         string snippetTexts,
         CancellationToken cancellationToken)
@@ -125,7 +125,7 @@ public class LearningGenerator : ILearningGenerator
                           $"所属章节：{string.Join(" > ", kp.ChapterPath)}\n" +
                           $"相关原文片段：\n{snippetTexts}";
 
-        return await _llmService.ChatJsonAsync<LearningContentResponse>(
+        return await _llmService.ChatJsonAsync<LearningContentDto>(
             systemPrompt,
             userMessage,
             cancellationToken);
@@ -187,16 +187,4 @@ public class LearningGenerator : ILearningGenerator
             SnippetIds = snippets.Select(s => s.SnippetId).ToList()
         };
     }
-}
-
-/// <summary>
-/// LLM 响应数据结构（JSON 字段使用 snake_case，与设计文档保持一致）
-/// </summary>
-public class LearningContentResponse
-{
-    [JsonProperty("summary")]
-    public Summary Summary { get; set; } = new();
-
-    [JsonProperty("levels")]
-    public List<ContentLevel> Levels { get; set; } = new();
 }

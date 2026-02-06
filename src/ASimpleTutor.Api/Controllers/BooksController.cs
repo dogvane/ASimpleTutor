@@ -116,7 +116,11 @@ public class BooksController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "知识体系构建失败");
-            return Problem(new { error = new { code = "SCAN_FAILED", message = "知识体系构建失败: " + ex.Message } }.ToString());
+            // 生产环境不返回详细错误信息
+            var errorMessage = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development"
+                ? "知识体系构建失败: " + ex.Message
+                : "知识体系构建失败，请稍后重试";
+            return Problem(new { error = new { code = "SCAN_FAILED", message = errorMessage } }.ToString());
         }
     }
 

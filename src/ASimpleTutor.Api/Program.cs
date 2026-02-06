@@ -1,7 +1,9 @@
 using ASimpleTutor.Api.Configuration;
 using ASimpleTutor.Api.Controllers;
+using ASimpleTutor.Api.Middleware;
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Services;
+using Microsoft.Extensions.Logging;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -93,6 +95,7 @@ async Task TryLoadSavedKnowledgeSystemAsync()
             KnowledgePointsController.SetKnowledgeSystem(knowledgeSystem);
             ChaptersController.SetKnowledgeSystem(knowledgeSystem);
             ExercisesController.SetKnowledgeSystem(knowledgeSystem);
+            ProgressController.SetKnowledgeSystem(knowledgeSystem);
             logger.LogInformation("知识系统加载完成，共 {Count} 个知识点", knowledgeSystem.KnowledgePoints.Count);
         }
     }
@@ -110,6 +113,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// 使用异常处理中间件
+app.UseExceptionHandlerMiddleware();
 
 app.UseRouting();
 app.MapControllers();
@@ -137,7 +143,13 @@ app.MapGet("/", () => Results.Ok(new
         "GET /api/v1/knowledge-points/exercises/status - 检查习题状态",
         "GET /api/v1/knowledge-points/exercises - 获取习题列表",
         "POST /api/v1/exercises/submit - 提交答案",
-        "POST /api/v1/exercises/feedback - 批量提交并获取反馈"
+        "POST /api/v1/exercises/feedback - 批量提交并获取反馈",
+        "GET /api/v1/progress - 获取知识点学习进度",
+        "GET /api/v1/progress/overview - 获取进度概览",
+        "PUT /api/v1/progress - 更新学习进度",
+        "GET /api/v1/progress/mistakes - 获取错题本",
+        "PUT /api/v1/progress/mistakes/{id}/resolve - 解决错题",
+        "GET /api/v1/progress/relations - 获取关联知识点"
     }
 }));
 

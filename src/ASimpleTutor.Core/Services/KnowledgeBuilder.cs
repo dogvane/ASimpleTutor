@@ -1,7 +1,7 @@
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
+using ASimpleTutor.Core.Models.Dto;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 
 namespace ASimpleTutor.Core.Services;
 
@@ -82,11 +82,15 @@ public class KnowledgeBuilder : IKnowledgeBuilder
             _logger.LogInformation("为知识点预生成学习内容");
             await GenerateLearningContentForPointsAsync(knowledgePoints, cancellationToken);
 
-            // 5. 构建知识树
+            // 5. 构建知识点关联关系
+            _logger.LogInformation("构建知识点关联关系");
+            await BuildKnowledgeRelationsAsync(knowledgePoints, cancellationToken);
+
+            // 6. 构建知识树
             _logger.LogInformation("构建知识树");
             knowledgeSystem.Tree = BuildKnowledgeTree(knowledgePoints);
 
-            // 6. 收集所有原文片段
+            // 7. 收集所有原文片段
             _logger.LogInformation("收集原文片段");
             foreach (var kp in knowledgePoints)
             {
@@ -146,16 +150,25 @@ public class KnowledgeBuilder : IKnowledgeBuilder
     {
       ""kp_id"": ""唯一的知识点ID"",
       ""title"": ""知识点标题"",
+      ""type"": ""concept|chapter|process|api|bestPractice"",
       ""aliases"": [""别名1"", ""别名2""],
       ""chapter_path"": [""章节1"", ""章节2""],
       ""importance"": 0.0-1.0,
       ""snippet_ids"": [""chunk_id1"", ""chunk_id2""],
-      ""summary"": ""一句话总结（必须填写）""
+      ""summary"": ""一句话总结（必须填写）"",
+      ""doc_id"": ""来源文档ID""
     }
   ]
 }
 
 " + chunkIdList.ToString() + @"
+知识点类型说明（type 字段）：
+- concept: 概念、定义、术语、理论
+- chapter: 章节标题节点
+- process: 流程、步骤、操作方法
+- api: API、接口、方法签名
+- bestPractice: 最佳实践、建议
+
 知识点识别规则：
 1. 识别文档中的概念、术语、规则、步骤、API 等
 2. 每个知识点必须至少关联一个原文片段（使用上面的 chunk_id）
@@ -163,10 +176,13 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 4. 尽量使用原文中的表述作为标题
 5. snippet_ids 必须使用上述可用的 chunk_id 格式
 6. summary 必须填写，不能为空
+7. type 字段必须填写且有效
+8. doc_id 必须填写，标识知识点来源的文档
 
 自检要求（生成后请检查）：
 - knowledge_points 不能为空，如果确实没有知识点请返回空数组并说明原因
 - 每个知识点的 snippet_ids 至少包含 1 个 ID
+- 每个知识点的 type 必须是有效的类型之一
 - 所有标题必须非空且唯一（如果重复请合并）";
 
         var documentContent = string.Join("\n\n", documents.Select(d =>
@@ -201,6 +217,13 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                     if (kp.SnippetIds == null || kp.SnippetIds.Count == 0)
                     {
                         _logger.LogWarning("知识点 '{Title}' 缺少 snippet_ids，已跳过", kp.Title);
+                        continue;
+                    }
+
+                    // 校验知识点类型
+                    if (string.IsNullOrEmpty(kp.Type) || !IsValidKpType(kp.Type))
+                    {
+                        _logger.LogWarning("知识点 '{Title}' 类型无效 '{Type}'，已跳过", kp.Title, kp.Type);
                         continue;
                     }
 
@@ -249,6 +272,125 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         {
             _logger.LogError(ex, "提取知识点失败");
             return new List<KnowledgePoint>();
+        }
+    }
+
+    private static bool IsValidKpType(string type)
+    {
+        var validTypes = new[] { "concept", "chapter", "process", "api", "bestPractice" };
+        return validTypes.Contains(type.ToLowerInvariant());
+    }
+
+    private async Task BuildKnowledgeRelationsAsync(
+        List<KnowledgePoint> knowledgePoints,
+        CancellationToken cancellationToken)
+    {
+        if (knowledgePoints.Count < 2)
+        {
+            _logger.LogInformation("知识点数量不足，跳过关联关系构建");
+            return;
+        }
+
+        _logger.LogInformation("开始构建 {Count} 个知识点的关联关系", knowledgePoints.Count);
+
+        try
+        {
+            // 构建知识点索引（标题 -> 知识点）
+            var kpIndex = knowledgePoints.ToDictionary(kp => kp.Title.ToLowerInvariant(), kp => kp);
+
+            // 为每个知识点分析关联关系
+            foreach (var kp in knowledgePoints)
+            {
+                if (kp.Summary == null || string.IsNullOrEmpty(kp.Summary.Definition))
+                {
+                    continue;
+                }
+
+                // 使用 LLM 分析可能的关联关系
+                var relations = await FindRelationsForKnowledgePointAsync(kp, knowledgePoints, cancellationToken);
+
+                foreach (var relation in relations)
+                {
+                    if (kpIndex.TryGetValue(relation.TargetTitle.ToLowerInvariant(), out var targetKp))
+                    {
+                        // 解析关系类型
+                        if (!Enum.TryParse<RelationType>(relation.Type, ignoreCase: true, out var relationType))
+                        {
+                            continue; // 无效的关系类型
+                        }
+
+                        // 检查是否已存在相同关系
+                        if (!kp.Relations.Any(r => r.ToKpId == targetKp.KpId && r.Type == relationType))
+                        {
+                            kp.Relations.Add(new KnowledgeRelation
+                            {
+                                ToKpId = targetKp.KpId,
+                                Type = relationType,
+                                Description = relation.Description
+                            });
+                        }
+                    }
+                }
+            }
+
+            _logger.LogInformation("关联关系构建完成");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "构建关联关系时发生错误");
+        }
+    }
+
+    private async Task<List<KnowledgeRelationDto>> FindRelationsForKnowledgePointAsync(
+        KnowledgePoint kp,
+        List<KnowledgePoint> allPoints,
+        CancellationToken cancellationToken)
+    {
+        var systemPrompt = @"你是一个知识图谱专家。请分析当前知识点与其他知识点之间的关联关系。
+
+请以 JSON 格式输出：
+{
+  ""relations"": [
+    {
+      ""target_title"": ""关联目标的知识点的完整标题"",
+      ""relation_type"": ""prerequisite|contrast|contains|related|similar"",
+      ""description"": ""关系描述""
+    }
+  ]
+}
+
+关系类型说明：
+- prerequisite: 前置依赖（学习当前知识点前应先掌握）
+- contrast: 对比关系（与关联知识点进行对比学习）
+- contains: 包含/组成（关联知识点是当前知识点的组成部分）
+- related: 一般关联（存在某种关联关系）
+- similar: 相似关系（两者相似但有区别）
+
+注意：
+1. 只返回确实存在关联关系的知识点
+2. target_title 必须与提供的知识点标题完全匹配
+3. 最多返回 5 个最重要的关联关系
+4. 如果没有明显关联，返回空数组";
+
+        var allTitles = string.Join("\n", allPoints.Select(p => $"- {p.Title}"));
+        var userMessage = $"当前知识点：{kp.Title}\n" +
+                          $"定义：{kp.Summary?.Definition ?? "无"}\n" +
+                          $"要点：{string.Join(", ", kp.Summary?.KeyPoints ?? new())}\n\n" +
+                          $"所有知识点：\n{allTitles}";
+
+        try
+        {
+            var response = await _llmService.ChatJsonAsync<RelationsResponse>(
+                systemPrompt,
+                userMessage,
+                cancellationToken);
+
+            return response?.Relations ?? new List<KnowledgeRelationDto>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "查找关联关系失败: {KpId}", kp.KpId);
+            return new List<KnowledgeRelationDto>();
         }
     }
 
@@ -309,7 +451,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         _logger.LogInformation("学习内容生成完成");
     }
 
-    private async Task<LearningContentResponse?> GenerateLearningContentAsync(
+    private async Task<LearningContentDto?> GenerateLearningContentAsync(
         KnowledgePoint kp,
         string snippetTexts,
         CancellationToken cancellationToken)
@@ -355,10 +497,11 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 - 如果无法生成有效内容，请返回空对象 {} 而非报错";
 
         var userMessage = $"知识点标题：{kp.Title}\n" +
+                          $"知识点类型：{kp.Type}\n" +
                           $"所属章节：{string.Join(" > ", kp.ChapterPath)}\n" +
                           $"相关原文片段：\n{snippetTexts}";
 
-        return await _llmService.ChatJsonAsync<LearningContentResponse>(
+        return await _llmService.ChatJsonAsync<LearningContentDto>(
             systemPrompt,
             userMessage,
             cancellationToken);
@@ -443,9 +586,11 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 KpId = $"kp_{id++:D4}",
                 BookRootId = bookRootId,
                 Title = doc.Title,
+                Type = KpType.Chapter,
                 ChapterPath = new List<string> { doc.Title },
                 Importance = 0.5f,
-                SnippetIds = new List<string> { $"{doc.DocId}_chunk_0" }
+                SnippetIds = new List<string> { $"{doc.DocId}_chunk_0" },
+                DocId = doc.DocId
             };
             knowledgeSystem.KnowledgePoints.Add(kp);
         }
@@ -453,60 +598,5 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         knowledgeSystem.Tree = BuildKnowledgeTree(knowledgeSystem.KnowledgePoints);
 
         return knowledgeSystem;
-    }
-}
-
-/// <summary>
-/// LLM 响应数据结构（用于接收 LLM 返回的 JSON）
-/// </summary>
-public class KnowledgePointsResponse
-{
-    [JsonProperty("schema_version")]
-    public string? SchemaVersion { get; set; }
-
-    [JsonProperty("knowledge_points")]
-    public List<KnowledgePointDto> KnowledgePoints { get; set; } = new();
-}
-
-/// <summary>
-/// 知识点 DTO（从 LLM 接收）
-/// </summary>
-public class KnowledgePointDto
-{
-    [JsonProperty("kp_id")]
-    public string? KpId { get; set; }
-
-    [JsonProperty("title")]
-    public string? Title { get; set; }
-
-    [JsonProperty("aliases")]
-    public List<string>? Aliases { get; set; }
-
-    [JsonProperty("chapter_path")]
-    public List<string>? ChapterPath { get; set; } // LLM 返回数组格式
-
-    [JsonProperty("importance")]
-    public float Importance { get; set; }
-
-    [JsonProperty("snippet_ids")]
-    public List<string>? SnippetIds { get; set; }
-
-    [JsonProperty("summary")]
-    public string? Summary { get; set; }
-
-    /// <summary>
-    /// 转换为标准的 KnowledgePoint
-    /// </summary>
-    public KnowledgePoint ToKnowledgePoint()
-    {
-        return new KnowledgePoint
-        {
-            KpId = KpId ?? string.Empty,
-            Title = Title ?? string.Empty,
-            Aliases = Aliases ?? new List<string>(),
-            ChapterPath = ChapterPath ?? new List<string>(),
-            Importance = Importance,
-            SnippetIds = SnippetIds ?? new List<string>()
-        };
     }
 }
