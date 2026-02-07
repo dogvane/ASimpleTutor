@@ -1,6 +1,8 @@
+using ASimpleTutor.Core.Configuration;
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace ASimpleTutor.Core.Services;
 
@@ -10,10 +12,12 @@ namespace ASimpleTutor.Core.Services;
 public class MarkdownScanner : IScannerService
 {
     private readonly ILogger<MarkdownScanner> _logger;
+    private readonly SectioningOptions _sectioningOptions;
 
-    public MarkdownScanner(ILogger<MarkdownScanner> logger)
+    public MarkdownScanner(ILogger<MarkdownScanner> logger, IOptions<SectioningOptions> sectioningOptions)
     {
         _logger = logger;
+        _sectioningOptions = sectioningOptions.Value;
     }
 
     public async Task<List<Document>> ScanAsync(string rootPath, CancellationToken cancellationToken = default)
@@ -64,88 +68,37 @@ public class MarkdownScanner : IScannerService
                 continue;
             }
 
-            try
+            var doc = await ParseDocumentAsync(filePath, cancellationToken);
+            if (doc != null)
             {
-                var doc = await ParseDocumentAsync(filePath, cancellationToken);
-                if (doc != null)
-                {
-                    documents.Add(doc);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "解析文档失败: {FilePath}", filePath);
+                documents.Add(doc);
             }
         }
 
-        _logger.LogInformation("扫描完成，共发现 {Count} 个文档", documents.Count);
         return documents;
     }
 
-    private static bool IsInExcludedDirectory(string filePath, string rootPath, List<string> excludeDirNames)
-    {
-        var relativePath = Path.GetRelativePath(rootPath, filePath);
-        var parts = relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        return parts.Any(part => excludeDirNames.Contains(part, StringComparer.OrdinalIgnoreCase));
-    }
-
-    private static bool IsHiddenOrTempFile(string fileName)
-    {
-        // 隐藏文件（以 . 开头）
-        if (fileName.StartsWith('.'))
-        {
-            return true;
-        }
-
-        // 临时文件（以 ~ 结尾）
-        if (fileName.EndsWith('~'))
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    private static List<string> GetMarkdownFiles(string rootPath, List<string> excludeDirNames, int maxDepth)
+    private List<string> GetMarkdownFiles(string rootPath, List<string> excludeDirNames, int maxDepth)
     {
         var files = new List<string>();
-        
-        // 使用队列实现广度优先搜索，避免递归深度过大
-        var queue = new Queue<(string path, int depth)>();
+        var queue = new Queue<(string Path, int Depth)>();
         queue.Enqueue((rootPath, 0));
-        
+
         while (queue.Count > 0)
         {
             var (currentPath, depth) = queue.Dequeue();
-            
-            // 检查深度限制
-            if (depth >= maxDepth)
+
+            if (depth > maxDepth)
             {
                 continue;
             }
-            
+
             try
             {
-                // 获取当前目录中的文件
-                var currentFiles = Directory.GetFiles(currentPath, "*.md");
-                foreach (var file in currentFiles)
-                {
-                    // 规范化文件路径
-                    var normalizedPath = Path.GetFullPath(file);
-                    
-                    // 检查是否在排除目录中
-                    if (!IsInExcludedDirectory(normalizedPath, rootPath, excludeDirNames))
-                    {
-                        // 检查是否是隐藏或临时文件
-                        var fileName = Path.GetFileName(normalizedPath);
-                        if (!IsHiddenOrTempFile(fileName))
-                        {
-                            files.Add(normalizedPath);
-                        }
-                    }
-                }
-                
+                // 获取当前目录中的 Markdown 文件
+                var markdownFiles = Directory.GetFiles(currentPath, "*.md", SearchOption.TopDirectoryOnly);
+                files.AddRange(markdownFiles);
+
                 // 获取当前目录中的子目录
                 var subdirectories = Directory.GetDirectories(currentPath);
                 foreach (var subdir in subdirectories)
@@ -234,138 +187,527 @@ public class MarkdownScanner : IScannerService
 
     private static string ExtractTitle(string content, string[] lines)
     {
-        // 尝试从第一个 H1 标题提取
+        // 尝试从 H1 标题提取
         foreach (var line in lines)
         {
             var trimmed = line.TrimStart();
             if (trimmed.StartsWith("# "))
             {
-                return trimmed.TrimStart('#').Trim();
+                return trimmed.Substring(2).Trim();
             }
         }
 
-        // 如果没有 H1，使用文件名
-        return Path.GetFileNameWithoutExtension(content);
+        // 如果没有 H1 标题，尝试从文件名提取
+        return "无标题文档";
     }
 
-    private static List<Section> ParseSections(string[] lines)
+    private List<Section> ParseSections(string[] lines)
     {
-        var sections = new List<Section>();
-        var currentSection = new Section
-        {
-            SectionId = "root",
-            HeadingPath = new List<string>(),
-            Paragraphs = new List<Paragraph>()
-        };
+        // 阶段一：全局预扫描
+        var headingTree = BuildHeadingTree(lines);
+        var levelStatistics = CalculateLevelStatistics(headingTree);
+        
+        // 阶段二：确定最优层级（局部动态分层）
+        var optimalLevels = DetermineOptimalLevels(headingTree, levelStatistics);
+        
+        // 阶段三：正式划分
+        return BuildSections(lines, headingTree, optimalLevels);
+    }
 
-        var paragraphId = 0;
-        var currentHeadingLevel = 0;
+    /// <summary>
+    /// 阶段一：构建标题树
+    /// </summary>
+    private List<HeadingNode> BuildHeadingTree(string[] lines)
+    {
+        var root = new HeadingNode { Level = 0, Text = "root", LineNumber = 0 };
+        var stack = new Stack<HeadingNode>();
+        stack.Push(root);
+        var inCodeBlock = false;
 
         for (int i = 0; i < lines.Length; i++)
         {
             var line = lines[i];
             var trimmed = line.TrimStart();
-
-            // 检测标题
+            
+            // 检测代码块开始/结束
+            if (trimmed.StartsWith("```"))
+            {
+                inCodeBlock = !inCodeBlock;
+                continue;
+            }
+            
+            // 如果在代码块内，跳过标题识别
+            if (inCodeBlock)
+            {
+                continue;
+            }
+            
             var headingMatch = System.Text.RegularExpressions.Regex.Match(trimmed, @"^(#{1,6})\s+(.+)");
+            
             if (headingMatch.Success)
             {
-                // 保存之前的段落
-                if (currentSection.Paragraphs.Count > 0)
+                var level = headingMatch.Groups[1].Length;
+                var text = headingMatch.Groups[2].Value.Trim();
+                
+                var node = new HeadingNode
                 {
-                    sections.Add(currentSection);
-                }
-
-                var headingLevel = headingMatch.Groups[1].Length;
-                var headingText = headingMatch.Groups[2].Value.Trim();
-
-                // 更新当前标题路径
-                if (headingLevel <= currentHeadingLevel)
-                {
-                    currentSection.HeadingPath = currentSection.HeadingPath.Take(headingLevel - 1).ToList();
-                }
-                currentSection.HeadingPath.Add(headingText);
-                currentHeadingLevel = headingLevel;
-
-                currentSection = new Section
-                {
-                    SectionId = $"section_{sections.Count}",
-                    HeadingPath = currentSection.HeadingPath.ToList(),
-                    Paragraphs = new List<Paragraph>()
+                    Level = level,
+                    Text = text,
+                    LineNumber = i
                 };
-            }
-            else if (!string.IsNullOrWhiteSpace(line) && !trimmed.StartsWith("```") && !trimmed.StartsWith(">"))
-            {
-                // 普通段落
-                var paragraphText = line.Trim();
-
-                // 跳过列表项符号
-                if (paragraphText.StartsWith("- ") || paragraphText.StartsWith("* ") || paragraphText.StartsWith("1. "))
+                
+                // 找到合适的父节点
+                while (stack.Count > 1 && stack.Peek().Level >= level)
                 {
-                    currentSection.Paragraphs.Add(new Paragraph
-                    {
-                        ParagraphId = $"p_{paragraphId++}",
-                        Content = paragraphText,
-                        StartLine = i,
-                        EndLine = i,
-                        Type = ParagraphType.List
-                    });
+                    stack.Pop();
                 }
-                else if (!string.IsNullOrEmpty(paragraphText))
-                {
-                    currentSection.Paragraphs.Add(new Paragraph
-                    {
-                        ParagraphId = $"p_{paragraphId++}",
-                        Content = paragraphText,
-                        StartLine = i,
-                        EndLine = i,
-                        Type = ParagraphType.Text
-                    });
-                }
-            }
-            else if (trimmed.StartsWith("```"))
-            {
-                // 代码块
-                var codeBuilder = new System.Text.StringBuilder();
-                var j = i + 1;
-                while (j < lines.Length && !lines[j].TrimStart().StartsWith("```"))
-                {
-                    codeBuilder.AppendLine(lines[j]);
-                    j++;
-                }
-
-                currentSection.Paragraphs.Add(new Paragraph
-                {
-                    ParagraphId = $"p_{paragraphId++}",
-                    Content = codeBuilder.ToString(),
-                    StartLine = i,
-                    EndLine = j,
-                    Type = ParagraphType.Code
-                });
-
-                i = j;
-            }
-            else if (trimmed.StartsWith(">"))
-            {
-                // 引用块
-                currentSection.Paragraphs.Add(new Paragraph
-                {
-                    ParagraphId = $"p_{paragraphId++}",
-                    Content = trimmed.TrimStart('>').Trim(),
-                    StartLine = i,
-                    EndLine = i,
-                    Type = ParagraphType.Quote
-                });
+                
+                var parent = stack.Peek();
+                parent.Children.Add(node);
+                node.Parent = parent;
+                stack.Push(node);
             }
         }
+        
+        // 计算每个节点的内容长度
+        CalculateContentLengths(root, lines);
+        
+        return root.Children;
+    }
 
-        // 保存最后的段落
-        if (currentSection.Paragraphs.Count > 0)
+    /// <summary>
+    /// 计算每个节点的内容长度
+    /// </summary>
+    private void CalculateContentLengths(HeadingNode root, string[] lines)
+    {
+        // 收集所有标题节点
+        var allNodes = new List<HeadingNode>();
+        CollectNodes(root, allNodes);
+        
+        // 按行号排序
+        allNodes.Sort((a, b) => a.LineNumber.CompareTo(b.LineNumber));
+        
+        // 计算每个节点的内容长度（包括子标题的内容）
+        for (int i = 0; i < allNodes.Count; i++)
         {
-            sections.Add(currentSection);
+            var node = allNodes[i];
+            var startLine = node.LineNumber + 1;
+            
+            // 找到当前节点的下一个同级或更高级标题
+            int endLine = lines.Length;
+            for (int j = i + 1; j < allNodes.Count; j++)
+            {
+                var nextNode = allNodes[j];
+                if (nextNode.Level <= node.Level)
+                {
+                    endLine = nextNode.LineNumber;
+                    break;
+                }
+            }
+            
+            // 计算原始字符数和过滤后的内容长度
+            var (originalLength, effectiveLength) = CalculateContentLengths(lines, startLine, endLine);
+            node.ContentLength = effectiveLength;
+            node.OriginalLength = originalLength;
+            node.EffectiveLength = effectiveLength;
         }
+    }
 
+    /// <summary>
+    /// 计算原始字符数和过滤后的内容长度
+    /// </summary>
+    private (int originalLength, int effectiveLength) CalculateContentLengths(string[] lines, int startLine, int endLine)
+    {
+        var originalLength = 0;
+        var effectiveLength = 0;
+        var inCodeBlock = false;
+        
+        for (int j = startLine; j < endLine; j++)
+        {
+            var line = lines[j];
+            var trimmed = line.TrimStart();
+            
+            // 原始字符数统计（包含所有内容）
+            originalLength += line.Length;
+            
+            // 检测代码块开始
+            if (trimmed.StartsWith("```"))
+            {
+                inCodeBlock = !inCodeBlock;
+                continue;
+            }
+            
+            // 如果在代码块内，跳过该行
+            if (inCodeBlock)
+            {
+                continue;
+            }
+            
+            // 过滤HTML标签和格式信息
+            var filteredLine = FilterHtmlTags(trimmed);
+            
+            // 只统计非空行的长度
+            if (!string.IsNullOrWhiteSpace(filteredLine))
+            {
+                effectiveLength += filteredLine.Length;
+            }
+        }
+        
+        return (originalLength, effectiveLength);
+    }
+
+    /// <summary>
+    /// 过滤HTML标签和格式信息
+    /// </summary>
+    private string FilterHtmlTags(string line)
+    {
+        // 过滤HTML标签（如 <img>, <a>, <div> 等）
+        var result = System.Text.RegularExpressions.Regex.Replace(line, @"<[^>]+>", "");
+        
+        // 过滤Markdown图片链接格式 ![alt](url)
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"!\[([^\]]*)\]\([^)]+\)", "");
+        
+        // 过滤Markdown链接格式 [text](url)
+        result = System.Text.RegularExpressions.Regex.Replace(result, @"\[([^\]]+)\]\([^)]+\)", "$1");
+        
+        return result;
+    }
+
+    /// <summary>
+    /// 收集所有节点
+    /// </summary>
+    private void CollectNodes(HeadingNode node, List<HeadingNode> nodes)
+    {
+        if (node.Level > 0)
+        {
+            nodes.Add(node);
+        }
+        
+        foreach (var child in node.Children)
+        {
+            CollectNodes(child, nodes);
+        }
+    }
+
+    /// <summary>
+    /// 阶段一：计算各层级统计信息
+    /// </summary>
+    private Dictionary<HeadingNode, List<LevelStatistics>> CalculateLevelStatistics(List<HeadingNode> headingTree)
+    {
+        var statistics = new Dictionary<HeadingNode, List<LevelStatistics>>();
+        
+        // 递归处理所有节点
+        foreach (var headingNode in headingTree)
+        {
+            CalculateNodeStatistics(headingNode, statistics);
+        }
+        
+        return statistics;
+    }
+
+    /// <summary>
+    /// 递归计算节点及其子节点的统计信息
+    /// </summary>
+    private void CalculateNodeStatistics(HeadingNode node, Dictionary<HeadingNode, List<LevelStatistics>> statistics)
+    {
+        var nodeStats = new List<LevelStatistics>();
+        
+        // 计算该节点下不同层级的统计信息（包括当前层级）
+        for (int level = node.Level; level <= 6; level++)
+        {
+            var sectionsAtLevel = GetSectionsAtLevel(node, level);
+            
+            if (sectionsAtLevel.Count > 0)
+            {
+                // 使用每个章节的 ContentLength 属性
+                var lengths = sectionsAtLevel.Select(s => s.ContentLength).ToList();
+                nodeStats.Add(new LevelStatistics
+                {
+                    Level = level,
+                    SectionCount = sectionsAtLevel.Count,
+                    AverageLength = (int)lengths.Average(),
+                    MinLength = lengths.Min(),
+                    MaxLength = lengths.Max()
+                });
+            }
+        }
+        
+        statistics[node] = nodeStats;
+        
+        // 递归处理子节点
+        foreach (var child in node.Children)
+        {
+            CalculateNodeStatistics(child, statistics);
+        }
+    }
+
+    /// <summary>
+    /// 获取指定层级的所有章节
+    /// </summary>
+    private List<HeadingNode> GetSectionsAtLevel(HeadingNode parentNode, int level)
+    {
+        var result = new List<HeadingNode>();
+        
+        // 如果当前节点的层级等于指定层级，将其添加到结果中
+        if (parentNode.Level == level && parentNode.Level > 0)
+        {
+            result.Add(parentNode);
+        }
+        
+        // 递归获取所有子节点中指定层级的章节
+        foreach (var child in parentNode.Children)
+        {
+            if (child.Level == level)
+            {
+                result.Add(child);
+            }
+            else if (child.Level < level)
+            {
+                result.AddRange(GetSectionsAtLevel(child, level));
+            }
+        }
+        
+        return result;
+    }
+
+    /// <summary>
+    /// 阶段二：确定最优层级（局部动态分层）
+    /// </summary>
+    private Dictionary<HeadingNode, int> DetermineOptimalLevels(List<HeadingNode> headingTree, Dictionary<HeadingNode, List<LevelStatistics>> levelStatistics)
+    {
+        var optimalLevels = new Dictionary<HeadingNode, int>();
+        
+        // 递归处理所有节点
+        foreach (var headingNode in headingTree)
+        {
+            DetermineNodeOptimalLevelRecursive(headingNode, levelStatistics, optimalLevels);
+        }
+        
+        return optimalLevels;
+    }
+    
+    /// <summary>
+    /// 递归确定节点及其子节点的最优层级
+    /// </summary>
+    private void DetermineNodeOptimalLevelRecursive(HeadingNode node, Dictionary<HeadingNode, List<LevelStatistics>> levelStatistics, Dictionary<HeadingNode, int> optimalLevels)
+    {
+        DetermineNodeOptimalLevel(node, levelStatistics, optimalLevels);
+        
+        // 递归处理所有子节点
+        foreach (var child in node.Children)
+        {
+            DetermineNodeOptimalLevelRecursive(child, levelStatistics, optimalLevels);
+        }
+    }
+
+    /// <summary>
+    /// 确定单个节点的最优层级
+    /// </summary>
+    private void DetermineNodeOptimalLevel(HeadingNode node, Dictionary<HeadingNode, List<LevelStatistics>> levelStatistics, Dictionary<HeadingNode, int> optimalLevels)
+    {
+        if (levelStatistics.TryGetValue(node, out var nodeStats))
+        {
+            var optimalLevel = DetermineOptimalLevelForNode(node, nodeStats);
+            optimalLevels[node] = optimalLevel;
+        }
+        else
+        {
+            // 如果没有统计信息，默认为当前节点的层级
+            optimalLevels[node] = node.Level;
+        }
+    }
+
+    /// <summary>
+    /// 为单个节点确定最优层级
+    /// </summary>
+    private int DetermineOptimalLevelForNode(HeadingNode node, List<LevelStatistics> nodeStats)
+    {
+        if (nodeStats.Count == 0)
+        {
+            // 如果没有子节点，返回当前节点的层级作为最优层级
+            _logger.LogDebug("节点 {NodeText} (Level {Level}) 没有可用的层级统计信息，使用当前层级作为最优层级", node.Text, node.Level);
+            return node.Level;
+        }
+        
+        // 动态调整目标值
+        var targetLength = GetTargetLengthForNode(node);
+        _logger.LogDebug("节点 {NodeText} (Level {Level}) 的目标长度: {TargetLength}", node.Text, node.Level, targetLength);
+        
+        var bestLevel = 1;
+        var bestScore = double.MinValue;
+        
+        foreach (var stats in nodeStats)
+        {
+            var score = CalculateLevelScore(stats, targetLength);
+            _logger.LogDebug("  层级 {Level}: 平均长度 {AvgLength}, 章节数 {Count}, 得分 {Score}", stats.Level, stats.AverageLength, stats.SectionCount, score);
+            
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestLevel = stats.Level;
+            }
+        }
+        
+        _logger.LogDebug("节点 {NodeText} (Level {Level}) 选择的最优层级: {BestLevel}", node.Text, node.Level, bestLevel);
+        
+        return bestLevel;
+    }
+
+    /// <summary>
+    /// 根据节点的内容规模动态调整目标值
+    /// </summary>
+    private int GetTargetLengthForNode(HeadingNode node)
+    {
+        // 对于所有节点都返回一个固定的目标长度，这样我们就可以更精细地划分章节
+        return _sectioningOptions.TargetLength;
+    }
+
+    /// <summary>
+    /// 计算节点及其所有子节点的总长度
+    /// </summary>
+    private int CalculateTotalLength(HeadingNode node)
+    {
+        var total = node.ContentLength;
+        
+        foreach (var child in node.Children)
+        {
+            total += CalculateTotalLength(child);
+        }
+        
+        return total;
+    }
+
+    /// <summary>
+    /// 计算层级的得分
+    /// </summary>
+    private double CalculateLevelScore(LevelStatistics stats, int targetLength)
+    {
+        var weights = _sectioningOptions.StrategyWeights;
+        var score = 0.0;
+        
+        // 规则一：目标长度匹配
+        var lengthDiff = Math.Abs(stats.AverageLength - targetLength);
+        var lengthScore = Math.Max(0.0, 1.0 - (lengthDiff / targetLength));
+        score += weights.TargetLengthMatch * lengthScore;
+        
+        // 规则二：避免过细划分
+        if (stats.AverageLength < _sectioningOptions.MinLength)
+        {
+            score -= weights.AvoidTooFine;
+        }
+        
+        // 规则三：避免过粗划分
+        if (stats.AverageLength > _sectioningOptions.MaxLength)
+        {
+            // 增加对过粗划分的惩罚
+            var overCoarseFactor = stats.AverageLength / _sectioningOptions.MaxLength;
+            score -= weights.AvoidTooCoarse * overCoarseFactor * 10; // 大幅增加惩罚因子
+        }
+        // 规则三补充：即使没有超过最大长度，也要惩罚过粗的划分
+        else if (stats.AverageLength > targetLength * 1.5)
+        {
+            var overFactor = stats.AverageLength / (targetLength * 1.5);
+            score -= weights.AvoidTooCoarse * overFactor * 5; // 大幅增加惩罚因子
+        }
+        
+        // 规则四：层级连续性（简化处理，倾向于选择较深的层级）
+        score += weights.MinDepthFirst * stats.Level * 5; // 大幅增加对深层级的偏好
+        
+        return score;
+    }
+
+    /// <summary>
+    /// 阶段三：构建章节结构
+    /// </summary>
+    private List<Section> BuildSections(string[] lines, List<HeadingNode> headingTree, Dictionary<HeadingNode, int> optimalLevels)
+    {
+        var sections = new List<Section>();
+        var sectionCounter = 0;
+        
+        // 递归构建所有章节
+        foreach (var headingNode in headingTree)
+        {
+            var section = BuildSectionFromHeading(headingNode, optimalLevels, lines, ref sectionCounter);
+            sections.Add(section);
+        }
+        
         return sections;
+    }
+
+    /// <summary>
+    /// 从标题节点构建章节
+    /// </summary>
+    private Section BuildSectionFromHeading(HeadingNode headingNode, Dictionary<HeadingNode, int> optimalLevels, string[] lines, ref int sectionCounter)
+    {
+        var section = new Section
+        {
+            SectionId = $"section_{sectionCounter++}",
+            HeadingPath = BuildHeadingPath(headingNode),
+            SubSections = new List<Section>(),
+            OriginalLength = headingNode.OriginalLength,
+            EffectiveLength = headingNode.EffectiveLength,
+            FilteredLength = headingNode.OriginalLength - headingNode.EffectiveLength
+        };
+        
+        // 获取当前节点的最优层级
+        optimalLevels.TryGetValue(headingNode, out var optimalLevel);
+        optimalLevel = optimalLevel > 0 ? optimalLevel : headingNode.Level;
+        
+        // 构建子章节（如果当前节点的层级小于最优层级）
+        if (headingNode.Level < optimalLevel)
+        {
+            foreach (var child in headingNode.Children)
+            {
+                var childSection = BuildSectionFromHeading(child, optimalLevels, lines, ref sectionCounter);
+                section.SubSections.Add(childSection);
+            }
+        }
+        
+        return section;
+    }
+
+    /// <summary>
+    /// 构建标题路径
+    /// </summary>
+    private List<string> BuildHeadingPath(HeadingNode node)
+    {
+        var path = new List<string>();
+        var current = node;
+        
+        while (current != null && current.Level > 0)
+        {
+            path.Insert(0, current.Text);
+            current = current.Parent;
+        }
+        
+        return path;
+    }
+
+    /// <summary>
+    /// 收集标题节点及其所有子节点
+    /// </summary>
+    private void CollectHeadingNodes(HeadingNode node, List<HeadingNode> nodes)
+    {
+        nodes.Add(node);
+        foreach (var child in node.Children)
+        {
+            CollectHeadingNodes(child, nodes);
+        }
+    }
+
+    private static bool IsHiddenOrTempFile(string fileName)
+    {
+        return fileName.StartsWith(".") || fileName.StartsWith("~") || fileName.EndsWith(".tmp") || fileName.EndsWith(".temp");
+    }
+
+    private static bool IsInExcludedDirectory(string path, string rootPath, List<string> excludeDirNames)
+    {
+        // 获取相对于根目录的路径
+        var relativePath = Path.GetRelativePath(rootPath, path);
+        var pathParts = relativePath.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+
+        // 检查路径中的任何部分是否在排除列表中
+        return pathParts.Any(part => excludeDirNames.Contains(part, StringComparer.OrdinalIgnoreCase));
     }
 
     private static string GenerateId(string filePath)

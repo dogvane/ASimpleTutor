@@ -1,3 +1,4 @@
+using ASimpleTutor.Core.Configuration;
 using ASimpleTutor.Core.Models;
 
 namespace ASimpleTutor.Api.Configuration;
@@ -11,6 +12,7 @@ public class AppConfig
     public string? ActiveBookRootId { get; set; }
     public LlmConfig Llm { get; set; } = new();
     public string? StoragePath { get; set; }
+    public SectioningOptions Sectioning { get; set; } = new();
 }
 
 /// <summary>

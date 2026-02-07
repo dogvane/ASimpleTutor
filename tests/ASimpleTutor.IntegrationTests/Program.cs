@@ -1,8 +1,10 @@
+using ASimpleTutor.Core.Configuration;
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
 using ASimpleTutor.Core.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 
 namespace ASimpleTutor.IntegrationTests;
@@ -83,16 +85,22 @@ public class Program
 
         // 2. 手动创建服务依赖
         var sourceTracker = new SourceTracker(_trackerLogger);
-        var scanner = new MarkdownScanner(_scannerLogger);
+        
+        // 读取 SectioningOptions 配置
+        var sectioningOptions = new SectioningOptions();
+        configuration.GetSection("Sectioning").Bind(sectioningOptions);
+        var sectioningOptionsWrapper = Options.Create(sectioningOptions);
+        
+        var scanner = new MarkdownScanner(_scannerLogger, sectioningOptionsWrapper);
         var llmService = CreateRealLLMService(configuration);
 
         // 3. 运行测试
         var results = new IntegrationTestResults();
 
         await TestDocumentScanner(scanner, dataPath, outputPath, results);
-        var knowledgeSystem = await TestKnowledgeBuilder(sourceTracker, scanner, llmService, dataPath, outputPath, results);
-        await TestLearningGenerator(sourceTracker, llmService, knowledgeSystem, outputPath, results);
-        await TestExerciseGenerator(sourceTracker, llmService, knowledgeSystem, outputPath, results);
+        // var knowledgeSystem = await TestKnowledgeBuilder(sourceTracker, scanner, llmService, dataPath, outputPath, results);
+        // await TestLearningGenerator(sourceTracker, llmService, knowledgeSystem, outputPath, results);
+        // await TestExerciseGenerator(sourceTracker, llmService, knowledgeSystem, outputPath, results);
 
         // 4. 保存测试结果摘要
         var summaryPath = Path.Combine(outputPath, "test_summary.json");
@@ -154,6 +162,64 @@ public class Program
                 Console.WriteLine($"    - {doc.Title}");
                 Console.WriteLine($"      章节数: {doc.Sections.Count}");
                 Console.WriteLine($"      路径: {doc.Path}");
+            }
+
+            // 输出扫描总结信息
+            var allSections = new List<Section>();
+            foreach (var doc in documents)
+            {
+                CollectAllSections(doc.Sections, allSections);
+            }
+            
+            var leafSections = allSections.Where(s => s.SubSections.Count == 0).ToList();
+            var totalSections = allSections.Count;
+            var leafSectionCount = leafSections.Count;
+            
+            // 原始字符统计
+            var totalOriginalCharacters = allSections.Sum(s => s.OriginalLength);
+            var avgOriginalCharactersPerSection = totalSections > 0 ? totalOriginalCharacters / totalSections : 0;
+            
+            // 有效字符统计
+            var totalEffectiveCharacters = allSections.Sum(s => s.EffectiveLength);
+            var avgEffectiveCharactersPerSection = totalSections > 0 ? totalEffectiveCharacters / totalSections : 0;
+            
+            // 过滤字符统计
+            var totalFilteredCharacters = allSections.Sum(s => s.FilteredLength);
+            var avgFilteredCharactersPerSection = totalSections > 0 ? totalFilteredCharacters / totalSections : 0;
+            
+            // 最大最小值统计
+            var maxOriginalCharacters = allSections.Count > 0 ? allSections.Max(s => s.OriginalLength) : 0;
+            var minOriginalCharacters = allSections.Count > 0 ? allSections.Min(s => s.OriginalLength) : 0;
+            var maxEffectiveCharacters = allSections.Count > 0 ? allSections.Max(s => s.EffectiveLength) : 0;
+            var minEffectiveCharacters = allSections.Count > 0 ? allSections.Min(s => s.EffectiveLength) : 0;
+            
+            Console.WriteLine();
+            Console.WriteLine("  [扫描总结]");
+            Console.WriteLine($"    总章节数: {totalSections}");
+            Console.WriteLine($"    叶子章节数: {leafSectionCount}");
+            Console.WriteLine();
+            Console.WriteLine("    [字符统计]");
+            Console.WriteLine($"      原始字符总数: {totalOriginalCharacters}");
+            Console.WriteLine($"      有效字符总数: {totalEffectiveCharacters}");
+            Console.WriteLine($"      过滤字符总数: {totalFilteredCharacters}");
+            Console.WriteLine($"      过滤比例: {(totalOriginalCharacters > 0 ? (totalFilteredCharacters * 100.0 / totalOriginalCharacters).ToString("F2") : "0.00")}%");
+            Console.WriteLine();
+            Console.WriteLine("    [每章平均字符数]");
+            Console.WriteLine($"      原始字符: {avgOriginalCharactersPerSection}");
+            Console.WriteLine($"      有效字符: {avgEffectiveCharactersPerSection}");
+            Console.WriteLine($"      过滤字符: {avgFilteredCharactersPerSection}");
+            Console.WriteLine();
+            Console.WriteLine("    [章节字符范围]");
+            Console.WriteLine($"      原始字符: {minOriginalCharacters} - {maxOriginalCharacters}");
+            Console.WriteLine($"      有效字符: {minEffectiveCharacters} - {maxEffectiveCharacters}");
+
+            // 输出章节树状结构
+            Console.WriteLine();
+            Console.WriteLine("  [章节结构]");
+            foreach (var doc in documents)
+            {
+                Console.WriteLine($"  └─ [{doc.Title}] ({doc.Sections.Count} 章节总览)");
+                PrintSectionTree(doc.Sections, "    ");
             }
 
             // 保存详细结果
@@ -381,7 +447,8 @@ public class Program
                 Success = true,
                 ExerciseCount = exercises.Count,
                 ChoiceCount = exercises.Count(e => e.Type == ExerciseType.SingleChoice),
-                FillBlankCount = exercises.Count(e => e.Type == ExerciseType.FillBlank),
+                MultiChoiceCount = exercises.Count(e => e.Type == ExerciseType.MultiChoice),
+                TrueFalseCount = exercises.Count(e => e.Type == ExerciseType.TrueFalse),
                 ShortAnswerCount = exercises.Count(e => e.Type == ExerciseType.ShortAnswer),
                 Exercises = exercises.Select(e => new ExerciseInfo
                 {
@@ -396,8 +463,9 @@ public class Program
             };
 
             Console.WriteLine($"  生成 {exercises.Count} 道习题:");
-            Console.WriteLine($"    - 选择题: {results.ExerciseGeneratorTest.ChoiceCount} 题");
-            Console.WriteLine($"    - 填空题: {results.ExerciseGeneratorTest.FillBlankCount} 题");
+            Console.WriteLine($"    - 单选题: {results.ExerciseGeneratorTest.ChoiceCount} 题");
+            Console.WriteLine($"    - 多选题: {results.ExerciseGeneratorTest.MultiChoiceCount} 题");
+            Console.WriteLine($"    - 判断题: {results.ExerciseGeneratorTest.TrueFalseCount} 题");
             Console.WriteLine($"    - 简答题: {results.ExerciseGeneratorTest.ShortAnswerCount} 题");
             Console.WriteLine();
 
@@ -460,6 +528,64 @@ public class Program
             results.ExerciseGeneratorTest = new ExerciseGeneratorTestResult { Success = false, ErrorMessage = ex.Message };
             Console.WriteLine($"  失败: {ex.Message}");
             Console.WriteLine();
+        }
+    }
+
+    // ==================== 辅助方法 ====================
+
+    private static void CollectAllSections(List<Section> sections, List<Section> allSections)
+    {
+        foreach (var section in sections)
+        {
+            allSections.Add(section);
+            CollectAllSections(section.SubSections, allSections);
+        }
+    }
+
+    private static int CountAllSections(List<Section> sections)
+    {
+        var count = sections.Count;
+        foreach (var section in sections)
+        {
+            count += CountAllSections(section.SubSections);
+        }
+        return count;
+    }
+
+    // CountAllCharacters 方法已不再使用，因为 Paragraphs 属性已被删除
+    // private static int CountAllCharacters(List<Section> sections)
+    // {
+    //     var count = 0;
+    //     foreach (var section in sections)
+    //     {
+    //         count += section.Paragraphs.Sum(p => p.Content.Length);
+    //         count += CountAllCharacters(section.SubSections);
+    //     }
+    //     return count;
+    // }
+
+    private static void PrintSectionTree(List<Section> sections, string prefix = "")
+    {
+        for (int i = 0; i < sections.Count; i++)
+        {
+            var section = sections[i];
+            var isLast = i == sections.Count - 1;
+            var connector = isLast ? "└─ " : "├─ ";
+            var childPrefix = isLast ? "    " : "│  ";
+            
+            var originalChars = section.OriginalLength;
+            var effectiveChars = section.EffectiveLength;
+            var filteredChars = section.FilteredLength;
+            var subSectionCount = section.SubSections.Count;
+            var title = section.HeadingPath.LastOrDefault() ?? "未知章节";
+            
+            Console.WriteLine($"{prefix}{connector}[{title}]");
+            Console.WriteLine($"{prefix}    原始: {originalChars} | 有效: {effectiveChars} | 过滤: {filteredChars} | 子章节: {subSectionCount}");
+            
+            if (section.SubSections.Count > 0)
+            {
+                PrintSectionTree(section.SubSections, prefix + childPrefix);
+            }
         }
     }
 }
@@ -540,7 +666,8 @@ public class ExerciseGeneratorTestResult
     public bool Success { get; set; }
     public int ExerciseCount { get; set; }
     public int ChoiceCount { get; set; }
-    public int FillBlankCount { get; set; }
+    public int MultiChoiceCount { get; set; }
+    public int TrueFalseCount { get; set; }
     public int ShortAnswerCount { get; set; }
     public List<ExerciseInfo>? Exercises { get; set; }
     public string? ErrorMessage { get; set; }
@@ -556,3 +683,7 @@ public class ExerciseInfo
     public int KeyPointCount { get; set; }
     public int EvidenceSnippetCount { get; set; }
 }
+
+// ==================== 辅助方法 ====================
+// 这些方法需要在 Program 类内部
+

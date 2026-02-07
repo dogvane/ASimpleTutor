@@ -428,5 +428,5 @@ FodyWeavers.xsd
 /docs/参考文档/*
 .claude/
 nul
-src/ASimpleTutor.Api/saves/hello-agents/snippets.json
-src/ASimpleTutor.Api/saves/hello-agents/knowledge-system.json
+src/ASimpleTutor.Api/saves/
+tests/

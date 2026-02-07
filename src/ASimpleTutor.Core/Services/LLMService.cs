@@ -111,10 +111,11 @@ public class LLMService : ILLMService
 
         for (int retry = 0; retry <= maxRetries; retry++)
         {
+            string? response = null;
             try
             {
                 float? temperature = retryTemperatures[retry];
-                var response = await ChatWithOptionsAsync(jsonPrompt, userMessage, temperature, cancellationToken);
+                response = await ChatWithOptionsAsync(jsonPrompt, userMessage, temperature, cancellationToken);
 
                 // 清理可能的 markdown 代码块标记
                 var cleanedResponse = response.Trim();
@@ -145,6 +146,10 @@ public class LLMService : ILLMService
                 float newTemp = retryTemperatures[retry + 1] ?? 0.5f;
                 _logger.LogWarning(ex, "JSON 解析失败，第 {Retry} 次重试 (共 {MaxRetries} 次)，下次重试将使用温度: {Temp}",
                     retry + 1, maxRetries, newTemp);
+                _logger.LogWarning("解析类型: {Type}", typeof(T).Name);
+                _logger.LogWarning("提示词: {Prompt}", jsonPrompt);
+                _logger.LogWarning("用户消息: {UserMessage}", userMessage);
+                _logger.LogWarning("原始响应: {Response}", response);
             }
         }
 
@@ -165,9 +170,10 @@ public class LLMService : ILLMService
 
         for (int retry = 0; retry <= maxRetries; retry++)
         {
+            string? response = null;
             try
             {
-                var response = await ChatWithOptionsAsync(jsonPrompt, userMessage, temperature, cancellationToken);
+                response = await ChatWithOptionsAsync(jsonPrompt, userMessage, temperature, cancellationToken);
 
                 var cleanedResponse = response.Trim();
                 if (cleanedResponse.StartsWith("```json"))
@@ -196,6 +202,10 @@ public class LLMService : ILLMService
                 lastException = ex;
                 _logger.LogWarning(ex, "JSON 解析失败，第 {Retry} 次重试 (共 {MaxRetries} 次)",
                     retry + 1, maxRetries);
+                _logger.LogWarning("解析类型: {Type}", typeof(T).Name);
+                _logger.LogWarning("提示词: {Prompt}", jsonPrompt);
+                _logger.LogWarning("用户消息: {UserMessage}", userMessage);
+                _logger.LogWarning("原始响应: {Response}", response);
             }
         }
 

@@ -52,64 +52,22 @@ public class Section
     public List<string> HeadingPath { get; set; } = new();
 
     /// <summary>
-    /// 章节内的段落列表
+    /// 子章节列表（层级结构）
     /// </summary>
-    public List<Paragraph> Paragraphs { get; set; } = new();
-}
-
-/// <summary>
-/// 段落
-/// </summary>
-public class Paragraph
-{
-    /// <summary>
-    /// 段落唯一标识符
-    /// </summary>
-    public string ParagraphId { get; set; } = string.Empty;
+    public List<Section> SubSections { get; set; } = new();
 
     /// <summary>
-    /// 段落在文档中的起始行号（从 0 开始）
+    /// 原始字符数（包含所有内容，包括代码块和HTML标签）
     /// </summary>
-    public int StartLine { get; set; }
+    public int OriginalLength { get; set; }
 
     /// <summary>
-    /// 段落在文档中的结束行号（从 0 开始）
+    /// 有效字符数（过滤后，排除代码块和HTML标签）
     /// </summary>
-    public int EndLine { get; set; }
+    public int EffectiveLength { get; set; }
 
     /// <summary>
-    /// 段落内容文本
+    /// 过滤掉的字符数（原始字符数 - 有效字符数）
     /// </summary>
-    public string Content { get; set; } = string.Empty;
-
-    /// <summary>
-    /// 段落类型
-    /// </summary>
-    public ParagraphType Type { get; set; } = ParagraphType.Text;
-}
-
-/// <summary>
-/// 段落类型
-/// </summary>
-public enum ParagraphType
-{
-    /// <summary>
-    /// 普通文本段落
-    /// </summary>
-    Text,
-
-    /// <summary>
-    /// 代码块
-    /// </summary>
-    Code,
-
-    /// <summary>
-    /// 引用块
-    /// </summary>
-    Quote,
-
-    /// <summary>
-    /// 列表项
-    /// </summary>
-    List
+    public int FilteredLength { get; set; }
 }

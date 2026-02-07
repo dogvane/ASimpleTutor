@@ -22,6 +22,10 @@ builder.Configuration.GetSection("App").Bind(config);
 // 注册配置为单例
 builder.Services.AddSingleton(config);
 
+// 注册 SectioningOptions 配置
+builder.Services.Configure<ASimpleTutor.Core.Configuration.SectioningOptions>(
+    builder.Configuration.GetSection("App:Sectioning"));
+
 // 注册日志
 builder.Services.AddLogging(logging =>
 {

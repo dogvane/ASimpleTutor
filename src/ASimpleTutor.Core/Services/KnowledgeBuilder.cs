@@ -342,11 +342,11 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 sectionContent.AppendLine($"{headingPrefix} {section.HeadingPath.Last()}");
                 sectionContent.AppendLine();
 
-                // 添加章节内容
-                foreach (var paragraph in section.Paragraphs)
-                {
-                    sectionContent.AppendLine(paragraph.Content);
-                }
+                // 章节内容已不再提取，Paragraphs 为空
+                // foreach (var paragraph in section.Paragraphs)
+                // {
+                //     sectionContent.AppendLine(paragraph.Content);
+                // }
                 sectionContent.AppendLine();
 
                 // 检查当前部分加上新章节是否会超过最大长度
@@ -721,10 +721,11 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 sb.AppendLine($"# {string.Join(" > ", section.HeadingPath)}");
             }
 
-            foreach (var para in section.Paragraphs)
-            {
-                sb.AppendLine(para.Content);
-            }
+            // 章节内容已不再提取，Paragraphs 为空
+            // foreach (var para in section.Paragraphs)
+            // {
+            //     sb.AppendLine(para.Content);
+            // }
 
             sb.AppendLine();
         }
