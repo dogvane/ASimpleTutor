@@ -18,10 +18,14 @@ public class LLMService : ILLMService
     private readonly string _model;
     private readonly ILogger<LLMService> _logger;
 
+    private readonly bool _isOllama;
+
     public LLMService(string apiKey, string baseUrl, string model, ILogger<LLMService> logger)
     {
         _model = model;
         _logger = logger;
+        // 判断是否是 Ollama 模型（根据 model 名称）
+        _isOllama = !string.IsNullOrEmpty(model) && model.Equals("ollama", StringComparison.OrdinalIgnoreCase);
 
         // 支持自定义 baseUrl（如 Ollama）
         if (!string.IsNullOrEmpty(baseUrl) && !baseUrl.StartsWith("https://api.openai.com/v1"))
@@ -68,7 +72,19 @@ public class LLMService : ILLMService
                 options.Temperature = temperature.Value;
             }
 
-            var response = await _client.CompleteChatAsync(messages, options, cancellationToken);
+            // 处理超时设置
+            using var cts = new CancellationTokenSource();
+            if (!_isOllama)
+            {
+                // 非 Ollama 模式，设置 30 秒超时
+                cts.CancelAfter(TimeSpan.FromSeconds(30));
+                _logger.LogDebug("非 Ollama 模式，设置 30 秒超时");
+            }
+            
+            // 组合取消令牌
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
+
+            var response = await _client.CompleteChatAsync(messages, options, linkedCts.Token);
 
             var content = response.Value.Content[0].Text;
             _logger.LogDebug("LLM 响应长度: {Length}", content?.Length ?? 0);

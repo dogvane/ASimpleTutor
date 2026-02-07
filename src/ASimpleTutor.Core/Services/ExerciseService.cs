@@ -55,22 +55,21 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
         int count,
         CancellationToken cancellationToken)
     {
-        var systemPrompt = @"你是一个习题生成专家。你的任务是根据提供的知识点生成练习题。
+        var systemPrompt = @"你是一个习题生成专家。你的任务是根据提供的知识点生成高质量的练习题。
 
-请生成 " + count + @" 道练习题，题型应多样化，包括：
+请生成 " + count + @" 道选择题，题型应多样化，包括：
 - SingleChoice（单选题）
 - TrueFalse（判断题）
-- ShortAnswer（简答题）
 
 请以 JSON 格式输出，结构如下：
 {
   ""exercises"": [
     {
-      ""type"": ""SingleChoice|TrueFalse|ShortAnswer"",
+      ""type"": ""SingleChoice|TrueFalse"",
       ""difficulty"": 1-5,
       ""question"": ""题目内容"",
-      ""options"": [""选项1"", ""选项2"", ""选项3"", ""选项4""],
-      ""correct_answer"": ""正确答案"",
+      ""options"": [""选项A"", ""选项B"", ""选项C"", ""选项D""],
+      ""correct_answer"": ""选项A"",
       ""key_points"": [""考查要点1"", ""考查要点2""],
       ""explanation"": ""答案解释（必须填写）""
     }
@@ -78,25 +77,49 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
 }
 
 类型说明：
-- SingleChoice = 单选题，需要 4 个选项
+- SingleChoice = 单选题，需要 4 个选项（A、B、C、D）
 - TrueFalse = 判断题，选项为 [""正确"", ""错误""]
-- ShortAnswer = 简答题，options 可为空
 
 生成原则：
 1. 题目难度为基础理解（difficulty=1-2），不引入外部知识
-2. 选择题：1个正确答案 + 2~3个干扰项
-3. 判断题：正确/错误选项
-4. 简答题：可从要点角度回答的问题
-5. 必须基于原文片段出题
-6. type 字段必须使用英文
-7. explanation 必须填写，不能为空
-8. difficulty 反映题目难度（1最简单，5最难）
+2. 单选题：1个正确答案 + 3个干扰项，选项要合理且具有迷惑性
+3. 判断题：正确/错误选项，判断依据要明确
+4. 必须基于原文片段出题，确保答案在原文中能找到依据
+5. type 字段必须使用英文
+6. explanation 必须填写，解释要清晰说明为什么正确答案是对的
+7. difficulty 反映题目难度（1最简单，5最难）
+8. 选项内容要简洁明了，避免过长或过于相似的选项
+9. 干扰项要基于常见错误理解，但要有明显的错误点
+
+示例：
+单选题示例：
+{
+  ""type"": ""SingleChoice"",
+  ""difficulty"": 1,
+  ""question"": ""智能体的核心特征是什么？"",
+  ""options"": [""能够感知环境并自主行动"", ""只能执行固定程序"", ""需要人工干预"", ""只能处理简单任务""],
+  ""correct_answer"": ""能够感知环境并自主行动"",
+  ""key_points"": [""感知能力"", ""自主决策""],
+  ""explanation"": ""智能体的核心特征是能够感知环境变化，并根据环境信息自主做出决策和采取行动。""
+}
+
+判断题示例：
+{
+  ""type"": ""TrueFalse"",
+  ""difficulty"": 1,
+  ""question"": ""智能体只能执行预设的程序，不能自主决策。"",
+  ""options"": [""正确"", ""错误""],
+  ""correct_answer"": ""错误"",
+  ""key_points"": [""自主决策能力""],
+  ""explanation"": ""错误。智能体具备自主决策能力，能够根据环境信息做出判断和选择，而不是只能执行预设的程序。""
+}
 
 自检要求：
 - 生成的题目数量应与 count 基本一致
-- type 必须是有效类型之一
-- correct_answer 不能为空
-- explanation 必须填写
+- type 必须是有效类型之一（SingleChoice 或 TrueFalse）
+- correct_answer 必须是 options 中的一个选项
+- explanation 必须填写，内容要清晰准确
+- 选项数量必须符合题型要求（单选题4个选项，判断题2个选项）
 - 如果无法生成指定数量的题目，返回实际能生成的数量";
 
         var userMessage = $"知识点：{kp.Title}\n" +

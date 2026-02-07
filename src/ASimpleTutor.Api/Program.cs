@@ -107,6 +107,40 @@ async Task TryLoadSavedKnowledgeSystemAsync()
 
 await TryLoadSavedKnowledgeSystemAsync();
 
+// 启动时检查 LLM 模型配置状态
+async Task CheckLlmModelStatusAsync()
+{
+    using var scope = app.Services.CreateScope();
+    var llmService = scope.ServiceProvider.GetRequiredService<ILLMService>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var config = scope.ServiceProvider.GetRequiredService<AppConfig>();
+
+    try
+    {
+        logger.LogInformation("开始检查 LLM 模型配置状态...");
+        
+        // 发送检查请求
+        var systemPrompt = "你是一个AI助手，请简要回答用户的问题。";
+        var userMessage = "你好，你是那个厂商的模型？";
+        
+        var response = await llmService.ChatAsync(systemPrompt, userMessage);
+        
+        logger.LogInformation("LLM 模型配置状态检查成功");
+        logger.LogInformation("LLM 响应: {Response}", response);
+        logger.LogInformation("当前配置的 LLM 模型: {Model}, 端点: {BaseUrl}", 
+            config.Llm.Model, config.Llm.BaseUrl);
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "LLM 模型配置状态检查失败，请检查配置");
+        logger.LogInformation("当前配置的 LLM 模型: {Model}, 端点: {BaseUrl}", 
+            config.Llm.Model, config.Llm.BaseUrl);
+    }
+}
+
+// 异步执行 LLM 模型状态检查
+_ = CheckLlmModelStatusAsync();
+
 // 配置中间件
 if (app.Environment.IsDevelopment())
 {

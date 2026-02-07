@@ -193,15 +193,55 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 
         try
         {
-            var response = await _llmService.ChatJsonAsync<KnowledgePointsResponse>(
-                systemPrompt,
-                $"请分析以下文档并提取知识点：\n\n{documentContent}",
-                cancellationToken);
+            // 处理长文档：基于文档结构拆分成多个部分
+            const int maxContentLength = 10000; // 设置最大内容长度
+            var knowledgePoints = new List<KnowledgePointDto>();
+            
+            if (documentContent.Length > maxContentLength)
+            {
+                _logger.LogInformation("文档过长，开始基于结构拆分处理...");
+                
+                // 基于文档结构拆分成多个部分
+                var parts = SplitDocumentByStructure(documents, maxContentLength);
+                
+                for (int i = 0; i < parts.Count; i++)
+                {
+                    _logger.LogInformation("处理文档部分 {PartIndex}/{TotalParts}, 字符数: {CharCount}", 
+                        i + 1, parts.Count, parts[i].Length);
+                    
+                    var partResponse = await _llmService.ChatJsonAsync<KnowledgePointsResponse>(
+                        systemPrompt,
+                        $"请分析以下文档部分并提取知识点：\n\n{parts[i]}",
+                        cancellationToken);
+                    
+                    if (partResponse?.KnowledgePoints != null && partResponse.KnowledgePoints.Count > 0)
+                    {
+                        _logger.LogInformation("部分 {PartIndex} 提取到 {Count} 个知识点", 
+                            i + 1, partResponse.KnowledgePoints.Count);
+                        knowledgePoints.AddRange(partResponse.KnowledgePoints);
+                    }
+                }
+                
+                _logger.LogInformation("基于结构拆分处理完成，共提取到 {Count} 个知识点", knowledgePoints.Count);
+            }
+            else
+            {
+                // 文档长度适中，直接处理
+                var response = await _llmService.ChatJsonAsync<KnowledgePointsResponse>(
+                    systemPrompt,
+                    $"请分析以下文档并提取知识点：\n\n{documentContent}",
+                    cancellationToken);
 
-            _logger.LogInformation("LLM 调用完成，提取到 {Count} 个知识点", response?.KnowledgePoints?.Count ?? 0);
+                _logger.LogInformation("LLM 调用完成，提取到 {Count} 个知识点", response?.KnowledgePoints?.Count ?? 0);
+                
+                if (response?.KnowledgePoints != null)
+                {
+                    knowledgePoints = response.KnowledgePoints;
+                }
+            }
 
             // 自检：验证响应数据
-            if (response?.KnowledgePoints == null || response.KnowledgePoints.Count == 0)
+            if (knowledgePoints == null || knowledgePoints.Count == 0)
             {
                 _logger.LogWarning("LLM 返回的知识点数为0，可能需要调整 prompt 或提供更完整的文档");
             }
@@ -211,7 +251,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 var validPoints = new List<KnowledgePointDto>();
                 var seenTitles = new HashSet<string>();
 
-                foreach (var kp in response.KnowledgePoints)
+                foreach (var kp in knowledgePoints)
                 {
                     // 校验 snippet_ids
                     if (kp.SnippetIds == null || kp.SnippetIds.Count == 0)
@@ -245,7 +285,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                     validPoints.Add(kp);
                 }
 
-                _logger.LogInformation("自检完成，有效知识点: {ValidCount}/{TotalCount}", validPoints.Count, response.KnowledgePoints.Count);
+                _logger.LogInformation("自检完成，有效知识点: {ValidCount}/{TotalCount}", validPoints.Count, knowledgePoints.Count);
 
                 // 将 DTO 转换为标准的 KnowledgePoint，截取章节路径到前两层
                 var kpList = validPoints
@@ -270,9 +310,172 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "提取知识点失败");
+            _logger.LogError(ex, "调用 LLM 提取知识点失败");
             return new List<KnowledgePoint>();
         }
+    }
+
+    /// <summary>
+    /// 基于文档结构拆分内容为多个部分
+    /// </summary>
+    private List<string> SplitDocumentByStructure(List<Document> documents, int maxLength)
+    {
+        var parts = new List<string>();
+        var currentPart = new System.Text.StringBuilder();
+
+        foreach (var doc in documents)
+        {
+            // 添加文档标题
+            currentPart.AppendLine($"# {doc.Title}");
+            currentPart.AppendLine();
+
+            // 遍历文档的所有章节
+            foreach (var section in doc.Sections)
+            {
+                // 构建章节标题路径
+                var headingPath = string.Join(" > ", section.HeadingPath);
+                var headingLevel = section.HeadingPath.Count;
+                var headingPrefix = new string('#', headingLevel + 1); // +1 因为文档标题是 H1
+                
+                // 添加章节标题
+                var sectionContent = new System.Text.StringBuilder();
+                sectionContent.AppendLine($"{headingPrefix} {section.HeadingPath.Last()}");
+                sectionContent.AppendLine();
+
+                // 添加章节内容
+                foreach (var paragraph in section.Paragraphs)
+                {
+                    sectionContent.AppendLine(paragraph.Content);
+                }
+                sectionContent.AppendLine();
+
+                // 检查当前部分加上新章节是否会超过最大长度
+                if (currentPart.Length + sectionContent.Length > maxLength)
+                {
+                    // 如果当前部分不为空，添加到结果中
+                    if (currentPart.Length > 0)
+                    {
+                        parts.Add(currentPart.ToString());
+                        currentPart.Clear();
+                        // 重新添加文档标题
+                        currentPart.AppendLine($"# {doc.Title}");
+                        currentPart.AppendLine();
+                    }
+                }
+
+                // 检查章节本身是否超过最大长度
+                if (sectionContent.Length > maxLength)
+                {
+                    // 如果章节本身超过最大长度，将其拆分为多个部分
+                    var sectionParts = SplitLongSection(sectionContent.ToString(), maxLength);
+                    foreach (var part in sectionParts)
+                    {
+                        // 为每个部分添加文档标题和章节标题
+                        var partWithHeading = new System.Text.StringBuilder();
+                        partWithHeading.AppendLine($"# {doc.Title}");
+                        partWithHeading.AppendLine($"{headingPrefix} {section.HeadingPath.Last()}");
+                        partWithHeading.AppendLine();
+                        partWithHeading.Append(part);
+                        parts.Add(partWithHeading.ToString());
+                    }
+                }
+                else
+                {
+                    // 将章节添加到当前部分
+                    currentPart.Append(sectionContent);
+                }
+            }
+        }
+
+        // 添加最后一个部分
+        if (currentPart.Length > 0)
+        {
+            parts.Add(currentPart.ToString());
+        }
+
+        return parts;
+    }
+
+    /// <summary>
+    /// 拆分长章节为多个部分
+    /// </summary>
+    private List<string> SplitLongSection(string content, int maxLength)
+    {
+        var parts = new List<string>();
+        var currentPosition = 0;
+
+        while (currentPosition < content.Length)
+        {
+            // 计算当前部分的结束位置
+            var endPosition = Math.Min(currentPosition + maxLength, content.Length);
+            
+            // 尝试在段落边界处拆分
+            if (endPosition < content.Length)
+            {
+                // 查找最近的换行符
+                var lastNewline = content.LastIndexOf("\n\n", endPosition);
+                if (lastNewline > currentPosition + maxLength / 2) // 确保拆分点不是太靠近当前位置
+                {
+                    endPosition = lastNewline;
+                }
+                else
+                {
+                    // 查找单个换行符
+                    var lastSingleNewline = content.LastIndexOf("\n", endPosition);
+                    if (lastSingleNewline > currentPosition + maxLength / 2)
+                    {
+                        endPosition = lastSingleNewline;
+                    }
+                }
+            }
+            
+            // 添加当前部分
+            parts.Add(content.Substring(currentPosition, endPosition - currentPosition));
+            currentPosition = endPosition;
+        }
+
+        return parts;
+    }
+
+    /// <summary>
+    /// 拆分文档内容为多个部分（备用方法）
+    /// </summary>
+    private List<string> SplitDocumentContent(string content, int maxLength)
+    {
+        var parts = new List<string>();
+        var currentPosition = 0;
+
+        while (currentPosition < content.Length)
+        {
+            // 计算当前部分的结束位置
+            var endPosition = Math.Min(currentPosition + maxLength, content.Length);
+            
+            // 尝试在段落边界处拆分
+            if (endPosition < content.Length)
+            {
+                // 查找最近的换行符
+                var lastNewline = content.LastIndexOf("\n\n", endPosition);
+                if (lastNewline > currentPosition + maxLength / 2) // 确保拆分点不是太靠近当前位置
+                {
+                    endPosition = lastNewline;
+                }
+                else
+                {
+                    // 查找单个换行符
+                    var lastSingleNewline = content.LastIndexOf("\n", endPosition);
+                    if (lastSingleNewline > currentPosition + maxLength / 2)
+                    {
+                        endPosition = lastSingleNewline;
+                    }
+                }
+            }
+            
+            // 添加当前部分
+            parts.Add(content.Substring(currentPosition, endPosition - currentPosition));
+            currentPosition = endPosition;
+        }
+
+        return parts;
     }
 
     private static bool IsValidKpType(string type)

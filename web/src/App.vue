@@ -4,12 +4,12 @@ import {
   activateBookRoot,
   getBookRoots,
   getChapters,
-  getDetailedContent,
   getExercises,
   getExercisesStatus,
   getKnowledgePoints,
   getOverview,
   getSourceContent,
+  getDetailedContent,
   scanBooks,
   searchChapters,
   submitExercise,
@@ -19,8 +19,8 @@ import ChapterTree from './components/ChapterTree.vue'
 import EmptyState from './components/EmptyState.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ExercisesDrawer from './components/ExercisesDrawer.vue'
-import LearningPanel from './components/LearningPanel.vue'
 import LoadingOverlay from './components/LoadingOverlay.vue'
+import SlideViewer from './components/SlideViewer.vue'
 import TopBar from './components/TopBar.vue'
 
 const bookRoots = ref([])
@@ -36,12 +36,6 @@ const searchResults = ref([])
 const searchActiveIndex = ref(0)
 const knowledgePoints = ref([])
 const selectedKp = ref(null)
-const learningTab = ref('overview')
-const activeLevel = ref('brief')
-const overviewData = ref(null)
-const sourceData = ref(null)
-const levelsData = ref(null)
-const learningLoading = ref(false)
 const exercisesStatus = ref('idle')
 const exercisesDrawerOpen = ref(false)
 const exercises = ref([])
@@ -49,10 +43,31 @@ const exercisesAnswers = ref({})
 const exercisesFeedback = ref({})
 const globalError = ref(null)
 const globalLoading = ref(false)
+const learningLoading = ref(false)
+
+// 幻灯片相关状态
+const slides = ref([])
+const currentSlideIndex = ref(0)
+const audioAvailable = ref(false)
+
+// 检查音频是否可用
+const checkAudioAvailability = async (kpId) => {
+  // 预留音频检查逻辑
+  // 实际实现时，这里应该检查是否存在对应的音频文件
+  // 目前返回false，因为这是预留功能
+  return false
+}
 
 const currentPath = computed(() => {
   if (selectedChapter.value && selectedKp.value) {
     return `${selectedChapter.value.title} > ${selectedKp.value.title}`
+  }
+  return selectedChapter.value?.title || ''
+})
+
+const currentSlideTitle = computed(() => {
+  if (selectedKp.value) {
+    return selectedKp.value.title
   }
   return selectedChapter.value?.title || ''
 })
@@ -72,9 +87,8 @@ const setError = (error) => {
 const resetLearningState = () => {
   knowledgePoints.value = []
   selectedKp.value = null
-  overviewData.value = null
-  sourceData.value = null
-  levelsData.value = null
+  slides.value = []
+  currentSlideIndex.value = 0
   exercisesStatus.value = 'idle'
   exercises.value = []
   exercisesAnswers.value = {}
@@ -116,18 +130,21 @@ const scanAndLoad = async () => {
   expandedIds.value = []
   selectedChapter.value = null
   resetLearningState()
-  globalLoading.value = true
   setError(null)
+  
+  // 不阻塞全局状态，允许用户进行其他操作
   try {
+    // 发送扫描请求
     await scanBooks()
+    
+    // 扫描请求发送成功后，立即开始加载章节
+    // 这样可以在服务端处理学习内容生成的同时，前端显示章节列表
     await loadChapters()
     scanStatus.value = 'ready'
   } catch (error) {
     scanStatus.value = 'failed'
     scanMessage.value = error.message
     setError(error)
-  } finally {
-    globalLoading.value = false
   }
 }
 
@@ -194,6 +211,12 @@ const selectChapter = async (chapter) => {
   selectedChapter.value = chapter
   resetLearningState()
   await loadKnowledgePoints(chapter.id)
+  
+  // 实现章节串联播放功能
+  if (knowledgePoints.value.length > 0) {
+    // 加载第一个知识点的幻灯片
+    await selectKp(knowledgePoints.value[0])
+  }
 }
 
 const loadKnowledgePoints = async (chapterId) => {
@@ -219,45 +242,159 @@ const loadKnowledgePoints = async (chapterId) => {
 const selectKp = async (kp) => {
   if (!kp || selectedKp.value?.id === kp.id) return
   selectedKp.value = kp
-  learningTab.value = 'overview'
-  activeLevel.value = 'brief'
-  overviewData.value = null
-  sourceData.value = null
-  levelsData.value = null
+  slides.value = []
+  currentSlideIndex.value = 0
   exercisesStatus.value = 'idle'
-  await loadOverview(kp.id)
+  await loadSlides(kp.id)
   await loadExercisesStatus(kp.id)
+  // 检查音频是否可用
+  audioAvailable.value = await checkAudioAvailability(kp.id)
 }
 
-const loadOverview = async (kpId) => {
+const loadSlides = async (kpId) => {
   learningLoading.value = true
   setError(null)
   try {
-    overviewData.value = await getOverview(kpId)
-  } catch (error) {
-    setError(error)
-  } finally {
-    learningLoading.value = false
-  }
-}
-
-const loadSource = async (kpId) => {
-  learningLoading.value = true
-  setError(null)
-  try {
-    sourceData.value = await getSourceContent(kpId)
-  } catch (error) {
-    setError(error)
-  } finally {
-    learningLoading.value = false
-  }
-}
-
-const loadLevels = async (kpId, level) => {
-  learningLoading.value = true
-  setError(null)
-  try {
-    levelsData.value = await getDetailedContent(kpId, level)
+    // 加载知识点概览作为幻灯片内容
+    const overviewData = await getOverview(kpId)
+    if (overviewData) {
+      // 构建幻灯片
+      const slideItems = []
+      
+      // 处理overview内容，构建完整的概览幻灯片
+      let overviewContent = ''
+      if (typeof overviewData.overview === 'object') {
+        // 如果是对象，提取完整内容
+        overviewContent = `<div class="overview-content">`
+        
+        // 添加定义
+        if (overviewData.overview.definition) {
+          overviewContent += `<div class="definition-section">
+            <h2>定义</h2>
+            <p>${overviewData.overview.definition}</p>
+          </div>`
+        }
+        
+        // 添加关键点
+        if (overviewData.overview.keyPoints && overviewData.overview.keyPoints.length > 0) {
+          overviewContent += `<div class="keypoints-section">
+            <h2>关键点</h2>
+            <ul>
+              ${overviewData.overview.keyPoints.map(point => `<li>${point}</li>`).join('')}
+            </ul>
+          </div>`
+        }
+        
+        // 添加注意事项
+        if (overviewData.overview.pitfalls && overviewData.overview.pitfalls.length > 0) {
+          overviewContent += `<div class="pitfalls-section">
+            <h2>注意事项</h2>
+            <ul>
+              ${overviewData.overview.pitfalls.map(pitfall => `<li>${pitfall}</li>`).join('')}
+            </ul>
+          </div>`
+        }
+        
+        overviewContent += `</div>`
+      } else if (typeof overviewData.overview === 'string') {
+        // 如果是字符串，直接使用
+        overviewContent = `<p>${overviewData.overview}</p>`
+      }
+      
+      // 添加概览幻灯片
+      slideItems.push({
+        id: `slide_${kpId}_1`,
+        content: `<h1>${overviewData.title}</h1>${overviewContent}`,
+        type: 'content',
+        sources: [] // 预留原文来源信息
+      })
+      
+      // 加载详细内容，获取不同层级的学习内容
+      try {
+        const detailedContent = await getDetailedContent(kpId, 'detailed')
+        if (detailedContent?.levels) {
+          // 添加详细内容幻灯片
+          if (detailedContent.levels.brief?.content) {
+            slideItems.push({
+              id: `slide_${kpId}_2`,
+              content: `<h2>概览</h2><p>${detailedContent.levels.brief.content}</p>`,
+              type: 'content',
+              sources: []
+            })
+          }
+          
+          if (detailedContent.levels.detailed?.content) {
+            slideItems.push({
+              id: `slide_${kpId}_3`,
+              content: `<h2>详细内容</h2><p>${detailedContent.levels.detailed.content}</p>`,
+              type: 'content',
+              sources: []
+            })
+          }
+          
+          if (detailedContent.levels.deep?.content) {
+            slideItems.push({
+              id: `slide_${kpId}_4`,
+              content: `<h2>深度解析</h2><p>${detailedContent.levels.deep.content}</p>`,
+              type: 'content',
+              sources: []
+            })
+          }
+        }
+      } catch (error) {
+        // 详细内容加载失败不影响主流程
+        console.error('加载详细内容失败:', error)
+      }
+      
+      // 加载原文内容作为幻灯片
+      try {
+        const sourceData = await getSourceContent(kpId)
+        if (sourceData?.sourceItems?.length > 0) {
+          const sourceContent = sourceData.sourceItems.map(item => `
+            <div class="source-item">
+              <h3>${item.fileName}</h3>
+              <p>${item.headingPath}</p>
+              <div class="source-text">${item.content}</div>
+            </div>
+          `).join('')
+          
+          slideItems.push({
+            id: `slide_${kpId}_source`,
+            content: `<h2>原文来源</h2>${sourceContent}`,
+            type: 'source',
+            sources: sourceData.sourceItems.map(item => ({
+              text: item.content.substring(0, 50) + '...',
+              ...item
+            }))
+          })
+        }
+      } catch (error) {
+        // 原文加载失败不影响主流程
+        console.error('加载原文失败:', error)
+      }
+      
+      // 检查是否有习题，如果有，添加习题幻灯片
+      const exercisesStatusData = await getExercisesStatus(kpId)
+      if (exercisesStatusData?.hasExercises) {
+        try {
+          const exercisesData = await getExercises(kpId)
+          if (exercisesData?.items?.length > 0) {
+            slideItems.push({
+              id: `slide_${kpId}_exercises`,
+              content: `<h2>习题测试</h2><p>本知识点共有 ${exercisesData.items.length} 道习题</p>`,
+              type: 'quiz',
+              exercises: exercisesData.items,
+              sources: []
+            })
+          }
+        } catch (error) {
+          // 习题加载失败不影响主流程
+          console.error('加载习题失败:', error)
+        }
+      }
+      
+      slides.value = slideItems
+    }
   } catch (error) {
     setError(error)
   } finally {
@@ -363,6 +500,34 @@ const handleSearchSelect = (item) => {
   searchResults.value = []
 }
 
+const handleRefresh = async (type) => {
+  if (!activeBookRootId.value) {
+    setError({ message: '请先激活书籍目录', code: 'BOOKROOT_NOT_FOUND' })
+    return
+  }
+
+  switch (type) {
+    case 'scan':
+      await scanAndLoad()
+      break
+    case 'exercises':
+      if (selectedKp.value) {
+        await loadExercisesStatus(selectedKp.value.id)
+      }
+      break
+    case 'knowledge':
+      if (selectedChapter.value) {
+        await loadKnowledgePoints(selectedChapter.value.id)
+      }
+      break
+    case 'graph':
+      await loadChapters()
+      break
+    default:
+      console.warn('未知的刷新类型:', type)
+  }
+}
+
 const findChapterById = (list, id) => {
   for (const node of list) {
     if (node.id === id) return node
@@ -372,6 +537,18 @@ const findChapterById = (list, id) => {
     }
   }
   return null
+}
+
+const handleSlideChange = (event) => {
+  if (event === 'next_knowledge_point') {
+    // 切换到下一个知识点
+    const currentIndex = knowledgePoints.value.findIndex(kp => kp.id === selectedKp.value?.id)
+    if (currentIndex !== -1 && currentIndex < knowledgePoints.value.length - 1) {
+      selectKp(knowledgePoints.value[currentIndex + 1])
+    }
+  } else if (typeof event === 'number') {
+    currentSlideIndex.value = event
+  }
 }
 
 let searchTimer
@@ -395,28 +572,6 @@ watch(
   },
 )
 
-watch(
-  learningTab,
-  (tab) => {
-    if (!selectedKp.value) return
-    if (tab === 'source' && !sourceData.value) {
-      loadSource(selectedKp.value.id)
-    }
-    if (tab === 'levels' && !levelsData.value) {
-      loadLevels(selectedKp.value.id, activeLevel.value)
-    }
-  },
-)
-
-watch(
-  activeLevel,
-  (level) => {
-    if (learningTab.value === 'levels' && selectedKp.value) {
-      loadLevels(selectedKp.value.id, level)
-    }
-  },
-)
-
 onMounted(() => {
   loadBookRoots()
 })
@@ -432,6 +587,7 @@ onMounted(() => {
       :search-query="searchQuery"
       @book-change="changeBookRoot"
       @scan="scanAndLoad"
+      @refresh="handleRefresh"
       @search-input="onSearchInput"
       @search-keydown="onSearchKeydown"
     />
@@ -452,31 +608,38 @@ onMounted(() => {
           @select="selectChapter"
           @select-search="handleSearchSelect"
         />
+        
+        <div v-if="knowledgePoints.length > 0" class="section-title">知识点</div>
+        <div v-if="knowledgePoints.length > 0" class="knowledge-points-list">
+          <div 
+            v-for="kp in knowledgePoints" 
+            :key="kp.id"
+            class="knowledge-point-item"
+            :class="{ active: selectedKp?.id === kp.id }"
+            @click="selectKp(kp)"
+          >
+            {{ kp.title }}
+          </div>
+        </div>
       </aside>
 
       <main class="main">
-        <LearningPanel
-          :chapter-title="selectedChapter?.title || ''"
-          :knowledge-points="knowledgePoints"
-          :selected-kp-id="selectedKp?.id || ''"
-          :overview="overviewData"
-          :source="sourceData"
-          :levels="levelsData"
-          :learning-tab="learningTab"
-          :active-level="activeLevel"
-          :exercises-status="exercisesStatus"
-          @select-kp="selectKp"
-          @tab-change="learningTab = $event"
-          @level-change="activeLevel = $event"
+        <div v-if="learningLoading" class="loading-container">
+          <div class="loading-spinner"></div>
+          <div class="loading-text">加载中...</div>
+        </div>
+        <div v-else-if="!selectedKp" class="empty-container">
+          <EmptyState title="暂无知识点" description="请选择其他章节或重新扫描。" :action="scanAndLoad" action-text="重新扫描" />
+        </div>
+        <SlideViewer
+          v-else
+          :slides="slides"
+          v-model:current-index="currentSlideIndex"
+          :title="currentSlideTitle"
+          :audio-available="audioAvailable"
+          @slide-change="handleSlideChange"
           @open-exercises="openExercises"
-        >
-          <template #empty>
-            <EmptyState title="暂无知识点" description="请选择其他章节或重新扫描。" :action="scanAndLoad" action-text="重新扫描" />
-          </template>
-          <template #loading>
-            <div v-if="learningLoading" class="inline-loading">内容加载中...</div>
-          </template>
-        </LearningPanel>
+        />
       </main>
     </div>
 
@@ -495,3 +658,64 @@ onMounted(() => {
     />
   </div>
 </template>
+
+<style scoped>
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.loading-spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top: 4px solid #007bff;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 16px;
+  color: #666;
+}
+
+.empty-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.knowledge-points-list {
+  margin-top: 20px;
+  padding: 0 16px;
+}
+
+.knowledge-point-item {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+
+.knowledge-point-item:hover {
+  background-color: rgba(0, 123, 255, 0.1);
+}
+
+.knowledge-point-item.active {
+  background-color: rgba(0, 123, 255, 0.2);
+  font-weight: 500;
+  border-left: 3px solid #007bff;
+}
+</style>

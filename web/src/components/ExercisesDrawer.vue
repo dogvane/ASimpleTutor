@@ -20,7 +20,7 @@
               <span>{{ exercise.question }}</span>
             </div>
             <div class="answer">
-              <template v-if="exercise.type === 'choice'">
+              <template v-if="exercise.type === 'SingleChoice' || exercise.type === 'TrueFalse'">
                 <label v-for="option in exercise.options" :key="option" class="option">
                   <input
                     type="radio"
@@ -34,7 +34,7 @@
               </template>
               <template v-else>
                 <textarea
-                  :placeholder="exercise.type === 'fill' ? '请输入答案' : '请输入你的理解'"
+                  :placeholder="'请输入你的理解'"
                   :value="answers[exercise.id] || ''"
                   @input="$emit('answer-change', { id: exercise.id, value: $event.target.value })"
                 ></textarea>
@@ -86,9 +86,8 @@ defineProps({
 })
 
 const typeLabel = (type) => {
-  if (type === 'choice') return '选择题'
-  if (type === 'fill') return '填空题'
-  if (type === 'short') return '简答题'
+  if (type === 'SingleChoice') return '单选题'
+  if (type === 'TrueFalse') return '判断题'
   return '题目'
 }
 </script>
