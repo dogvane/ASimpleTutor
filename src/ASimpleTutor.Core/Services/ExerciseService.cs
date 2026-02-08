@@ -10,7 +10,6 @@ namespace ASimpleTutor.Core.Services;
 /// </summary>
 public class ExerciseService : IExerciseGenerator, IExerciseFeedback
 {
-    private readonly ISimpleRagService _ragService;
     private readonly ILLMService _llmService;
     private readonly KnowledgeSystemStore _knowledgeSystemStore;
     private readonly ILogger<ExerciseService> _logger;
@@ -20,12 +19,10 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
     private readonly object _lock = new();
 
     public ExerciseService(
-        ISimpleRagService ragService,
         ILLMService llmService,
         KnowledgeSystemStore knowledgeSystemStore,
         ILogger<ExerciseService> logger)
     {
-        _ragService = ragService;
         _llmService = llmService;
         _knowledgeSystemStore = knowledgeSystemStore;
         _logger = logger;

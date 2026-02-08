@@ -10,18 +10,15 @@ namespace ASimpleTutor.Core.Services;
 /// </summary>
 public class LearningGenerator : ILearningGenerator
 {
-    private readonly ISimpleRagService _ragService;
     private readonly KnowledgeSystemStore _knowledgeSystemStore;
     private readonly ILLMService _llmService;
     private readonly ILogger<LearningGenerator> _logger;
 
     public LearningGenerator(
-        ISimpleRagService ragService,
         KnowledgeSystemStore knowledgeSystemStore,
         ILLMService llmService,
         ILogger<LearningGenerator> logger)
     {
-        _ragService = ragService;
         _knowledgeSystemStore = knowledgeSystemStore;
         _llmService = llmService;
         _logger = logger;

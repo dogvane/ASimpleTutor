@@ -54,11 +54,6 @@ builder.Services.AddSingleton<ILLMService>(sp =>
         config.Llm.Model,
         logger);
 });
-builder.Services.AddSingleton<ISimpleRagService>(sp =>
-{
-    var logger = sp.GetRequiredService<ILogger<InMemorySimpleRagService>>();
-    return new InMemorySimpleRagService(logger);
-});
 builder.Services.AddSingleton<IKnowledgeBuilder, KnowledgeBuilder>();
 builder.Services.AddSingleton<ILearningGenerator, LearningGenerator>();
 builder.Services.AddSingleton<IExerciseGenerator, ExerciseService>();

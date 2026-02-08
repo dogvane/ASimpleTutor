@@ -13,18 +13,15 @@ namespace ASimpleTutor.Core.Services;
 public class KnowledgeBuilder : IKnowledgeBuilder
 {
     private readonly IScannerService _scannerService;
-    private readonly ISimpleRagService _ragService;
     private readonly ILLMService _llmService;
     private readonly ILogger<KnowledgeBuilder> _logger;
 
     public KnowledgeBuilder(
         IScannerService scannerService,
-        ISimpleRagService ragService,
         ILLMService llmService,
         ILogger<KnowledgeBuilder> logger)
     {
         _scannerService = scannerService;
-        _ragService = ragService;
         _llmService = llmService;
         _logger = logger;
     }
@@ -52,20 +49,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 return (knowledgeSystem, documents);
             }
 
-            // 2. 插入 RAG 并跟踪原文
-            _logger.LogInformation("插入文档到 RAG");
-            foreach (var doc in documents)
-            {
-                doc.BookRootId = bookRootId;
-                var content = ReconstructDocumentContent(doc);
-                await _ragService.InsertAsync(doc.DocId, content, new Dictionary<string, object>
-                {
-                    ["filePath"] = doc.Path,
-                    ["title"] = doc.Title
-                });
-            }
-
-            // 3. 调用 LLM 提取知识点
+            // 2. 调用 LLM 提取知识点
             _logger.LogInformation("调用 LLM 提取知识点");
             var (knowledgePoints, snippets) = await ExtractKnowledgePointsAsync(documents, cancellationToken);
             knowledgeSystem.KnowledgePoints = knowledgePoints;
