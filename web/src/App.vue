@@ -10,6 +10,7 @@ import {
   getOverview,
   getSourceContent,
   getDetailedContent,
+  getSlideCards,
   scanBooks,
   searchChapters,
   submitExercise,
@@ -269,149 +270,154 @@ const loadSlides = async (kpId) => {
   learningLoading.value = true
   setError(null)
   try {
-    // 加载知识点概览作为幻灯片内容
-    const overviewData = await getOverview(kpId)
-    if (overviewData) {
-      // 构建幻灯片
-      const slideItems = []
-      
-      // 处理overview内容，构建完整的概览幻灯片
-      let overviewContent = ''
-      if (typeof overviewData.overview === 'object') {
-        // 如果是对象，提取完整内容
-        overviewContent = `<div class="overview-content">`
-        
-        // 添加定义
-        if (overviewData.overview.definition) {
-          overviewContent += `<div class="definition-section">
-            <h2>定义</h2>
-            <p>${overviewData.overview.definition}</p>
-          </div>`
-        }
-        
-        // 添加关键点
-        if (overviewData.overview.keyPoints && overviewData.overview.keyPoints.length > 0) {
-          overviewContent += `<div class="keypoints-section">
-            <h2>关键点</h2>
-            <ul>
-              ${overviewData.overview.keyPoints.map(point => `<li>${point}</li>`).join('')}
-            </ul>
-          </div>`
-        }
-        
-        // 添加注意事项
-        if (overviewData.overview.pitfalls && overviewData.overview.pitfalls.length > 0) {
-          overviewContent += `<div class="pitfalls-section">
-            <h2>注意事项</h2>
-            <ul>
-              ${overviewData.overview.pitfalls.map(pitfall => `<li>${pitfall}</li>`).join('')}
-            </ul>
-          </div>`
-        }
-        
-        overviewContent += `</div>`
-      } else if (typeof overviewData.overview === 'string') {
-        // 如果是字符串，直接使用
-        overviewContent = `<p>${overviewData.overview}</p>`
+    const slideItems = []
+    
+    try {
+      const slideCardsData = await getSlideCards(kpId)
+      if (slideCardsData?.slideCards?.length > 0) {
+        slideItems.push(...slideCardsData.slideCards.map(sc => ({
+          id: sc.slideId,
+          content: sc.htmlContent,
+          type: sc.type.toLowerCase(),
+          title: sc.title,
+          speechScript: sc.speechScript,
+          sources: sc.sourceReferences?.map(sr => ({
+            text: sr.content?.substring(0, 50) + '...',
+            fileName: sr.filePath ? sr.filePath.split('/').pop() : '',
+            ...sr
+          })) || []
+        })))
       }
-      
-      // 添加概览幻灯片
-      slideItems.push({
-        id: `slide_${kpId}_1`,
-        content: `<h1>${overviewData.title}</h1>${overviewContent}`,
-        type: 'content',
-        sources: [] // 预留原文来源信息
-      })
-      
-      // 加载详细内容，获取不同层级的学习内容
-      try {
-        const detailedContent = await getDetailedContent(kpId, 'detailed')
-        if (detailedContent?.levels) {
-          // 添加详细内容幻灯片
-          if (detailedContent.levels.brief?.content) {
-            slideItems.push({
-              id: `slide_${kpId}_2`,
-              content: `<h2>概览</h2><p>${detailedContent.levels.brief.content}</p>`,
-              type: 'content',
-              sources: []
-            })
+    } catch (error) {
+      console.error('加载 SlideCards 失败，使用降级方案:', error)
+    }
+    
+    if (slideItems.length === 0) {
+      const overviewData = await getOverview(kpId)
+      if (overviewData) {
+        let overviewContent = ''
+        if (typeof overviewData.overview === 'object') {
+          overviewContent = `<div class="overview-content">`
+          
+          if (overviewData.overview.definition) {
+            overviewContent += `<div class="definition-section">
+              <h2>定义</h2>
+              <p>${overviewData.overview.definition}</p>
+            </div>`
           }
           
-          if (detailedContent.levels.detailed?.content) {
-            slideItems.push({
-              id: `slide_${kpId}_3`,
-              content: `<h2>详细内容</h2><p>${detailedContent.levels.detailed.content}</p>`,
-              type: 'content',
-              sources: []
-            })
+          if (overviewData.overview.keyPoints && overviewData.overview.keyPoints.length > 0) {
+            overviewContent += `<div class="keypoints-section">
+              <h2>关键点</h2>
+              <ul>
+                ${overviewData.overview.keyPoints.map(point => `<li>${point}</li>`).join('')}
+              </ul>
+            </div>`
           }
           
-          if (detailedContent.levels.deep?.content) {
-            slideItems.push({
-              id: `slide_${kpId}_4`,
-              content: `<h2>深度解析</h2><p>${detailedContent.levels.deep.content}</p>`,
-              type: 'content',
-              sources: []
-            })
+          if (overviewData.overview.pitfalls && overviewData.overview.pitfalls.length > 0) {
+            overviewContent += `<div class="pitfalls-section">
+              <h2>注意事项</h2>
+              <ul>
+                ${overviewData.overview.pitfalls.map(pitfall => `<li>${pitfall}</li>`).join('')}
+              </ul>
+            </div>`
           }
-        }
-      } catch (error) {
-        // 详细内容加载失败不影响主流程
-        console.error('加载详细内容失败:', error)
-      }
-      
-      // 加载原文内容作为幻灯片
-      try {
-        const sourceData = await getSourceContent(kpId)
-        if (sourceData?.sourceItems?.length > 0) {
-          const sourceContent = sourceData.sourceItems.map(item => `
-            <div class="source-item">
-              <h3>${item.fileName}</h3>
-              <p>${item.headingPath}</p>
-              <div class="source-text">${item.content}</div>
-            </div>
-          `).join('')
           
-          slideItems.push({
-            id: `slide_${kpId}_source`,
-            content: `<h2>原文来源</h2>${sourceContent}`,
-            type: 'source',
-            sources: sourceData.sourceItems.map(item => ({
-              text: item.content.substring(0, 50) + '...',
-              ...item
-            }))
-          })
+          overviewContent += `</div>`
+        } else if (typeof overviewData.overview === 'string') {
+          overviewContent = `<p>${overviewData.overview}</p>`
         }
-      } catch (error) {
-        // 原文加载失败不影响主流程
-        console.error('加载原文失败:', error)
-      }
-      
-      // 检查是否有习题，如果有，为每道习题创建单独的幻灯片
-      const exercisesStatusData = await getExercisesStatus(kpId)
-      if (exercisesStatusData?.hasExercises) {
+        
+        slideItems.push({
+          id: `slide_${kpId}_1`,
+          content: `<h1>${overviewData.title}</h1>${overviewContent}`,
+          type: 'content',
+          sources: []
+        })
+        
         try {
-          const exercisesData = await getExercises(kpId)
-          if (exercisesData?.items?.length > 0) {
-            // 为每道习题创建单独的幻灯片
-            exercisesData.items.forEach((exercise, index) => {
+          const detailedContent = await getDetailedContent(kpId, 'detailed')
+          if (detailedContent?.levels) {
+            if (detailedContent.levels.brief?.content) {
               slideItems.push({
-                id: `slide_${kpId}_exercise_${index}`,
-                content: `<h2>${exercise.question}</h2>`,
-                type: 'quiz',
-                exercise: exercise,
+                id: `slide_${kpId}_2`,
+                content: `<h2>概览</h2><p>${detailedContent.levels.brief.content}</p>`,
+                type: 'content',
                 sources: []
               })
+            }
+            
+            if (detailedContent.levels.detailed?.content) {
+              slideItems.push({
+                id: `slide_${kpId}_3`,
+                content: `<h2>详细内容</h2><p>${detailedContent.levels.detailed.content}</p>`,
+                type: 'content',
+                sources: []
+              })
+            }
+            
+            if (detailedContent.levels.deep?.content) {
+              slideItems.push({
+                id: `slide_${kpId}_4`,
+                content: `<h2>深度解析</h2><p>${detailedContent.levels.deep.content}</p>`,
+                type: 'content',
+                sources: []
+              })
+            }
+          }
+        } catch (error) {
+          console.error('加载详细内容失败:', error)
+        }
+        
+        try {
+          const sourceData = await getSourceContent(kpId)
+          if (sourceData?.sourceItems?.length > 0) {
+            const sourceContent = sourceData.sourceItems.map(item => `
+              <div class="source-item">
+                <h3>${item.fileName}</h3>
+                <p>${item.headingPath}</p>
+                <div class="source-text">${item.content}</div>
+              </div>
+            `).join('')
+            
+            slideItems.push({
+              id: `slide_${kpId}_source`,
+              content: `<h2>原文来源</h2>${sourceContent}`,
+              type: 'source',
+              sources: sourceData.sourceItems.map(item => ({
+                text: item.content.substring(0, 50) + '...',
+                ...item
+              }))
             })
           }
         } catch (error) {
-          // 习题加载失败不影响主流程
-          console.error('加载习题失败:', error)
+          console.error('加载原文失败:', error)
         }
       }
-      
-      slides.value = slideItems
     }
+    
+    const exercisesStatusData = await getExercisesStatus(kpId)
+    if (exercisesStatusData?.hasExercises) {
+      try {
+        const exercisesData = await getExercises(kpId)
+        if (exercisesData?.items?.length > 0) {
+          exercisesData.items.forEach((exercise, index) => {
+            slideItems.push({
+              id: `slide_${kpId}_exercise_${index}`,
+              content: `<h2>${exercise.question}</h2>`,
+              type: 'quiz',
+              exercise: exercise,
+              sources: []
+            })
+          })
+        }
+      } catch (error) {
+        console.error('加载习题失败:', error)
+      }
+    }
+    
+    slides.value = slideItems
   } catch (error) {
     setError(error)
   } finally {

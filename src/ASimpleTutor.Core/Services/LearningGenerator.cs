@@ -28,12 +28,6 @@ public class LearningGenerator : ILearningGenerator
     {
         _logger.LogInformation("生成学习内容: {KpId} - {Title}", kp.KpId, kp.Title);
 
-        var learningPack = new LearningPack
-        {
-            KpId = kp.KpId,
-            SnippetIds = new List<string>(kp.SnippetIds)
-        };
-
         List<SourceSnippet> snippets = new();
 
         try
@@ -59,44 +53,31 @@ public class LearningGenerator : ILearningGenerator
             if (string.IsNullOrEmpty(snippetTexts) || snippetTexts.Length < 100)
             {
                 _logger.LogError("原文片段为空或长度不足: {KpId}, 长度: {Length}", kp.KpId, snippetTexts?.Length ?? 0);
-                learningPack = CreateFallbackLearningPack(kp, snippets);
-                return learningPack;
+                return CreateFallbackLearningPack(kp, snippets);
             }
 
             // 2. 调用 LLM 生成学习内容
             _logger.LogDebug("调用 LLM 生成学习内容");
-            var content = await GenerateLearningContentAsync(kp, snippetTexts, cancellationToken);
+            var learningPack = await GenerateLearningContentAsync(kp, snippetTexts, cancellationToken);
 
-            if (content != null)
+            if (learningPack != null)
             {
-                learningPack.Summary = content.Summary;
-                learningPack.Levels = content.Levels;
+                return learningPack;
             }
             else
             {
                 // 降级：使用原文片段提取要点
-                learningPack = CreateFallbackLearningPack(kp, snippets);
+                return CreateFallbackLearningPack(kp, snippets);
             }
-
-            // 3. 自检学习内容
-            ValidateLearningPack(learningPack, kp);
-
-            // 4. 收集原文片段
-            learningPack.SnippetIds = snippets.Select(s => s.SnippetId).ToList();
-
-            // 5. 关联知识点（可选）
-            learningPack.RelatedKpIds = await FindRelatedKnowledgePointsAsync(kp, cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "学习内容生成失败: {KpId}", kp.KpId);
-            learningPack = CreateFallbackLearningPack(kp, snippets);
+            return CreateFallbackLearningPack(kp, snippets);
         }
-
-        return learningPack;
     }
 
-    private async Task<LearningContentDto?> GenerateLearningContentAsync(
+    private async Task<LearningPack?> GenerateLearningContentAsync(
         KnowledgePoint kp,
         string snippetTexts,
         CancellationToken cancellationToken)
@@ -126,6 +107,28 @@ public class LearningGenerator : ILearningGenerator
       ""title"": ""深入"",
       ""content"": ""边界条件、对比、推导""
     }
+  ],
+  ""slide_cards"": [
+    {
+      ""type"": ""cover|explanation|detail|deepDive|source|quiz|relations|summary"",
+      ""order"": 0,
+      ""title"": ""卡片标题"",
+      ""subtitle"": ""卡片副标题（可选）"",
+      ""content"": ""幻灯片内容，可以使用 Markdown 格式"",
+      ""kpLinks"": [
+        {
+          ""text"": ""链接文本"",
+          ""targetKpId"": ""目标知识点ID"",
+          ""relationship"": ""prerequisite|related|contrast|similar|contains"",
+          ""targetTitle"": ""目标知识点标题""
+        }
+      ],
+      ""config"": {
+        ""allowSkip"": true,
+        ""requireComplete"": false,
+        ""estimatedTime"": 60
+      }
+    }
   ]
 }
 
@@ -134,21 +137,74 @@ public class LearningGenerator : ILearningGenerator
 2. 定义要简洁准确，要点要清晰实用
 3. 常见误区要具体且有针对性
 4. 层次化内容要循序渐进
-5. summary.definition 必须填写，不能为空
+5. 幻灯片卡片要包含 3-5 张，类型要多样化
+6. content 可以使用 Markdown 格式
+7. summary.definition 必须填写，不能为空
 
 自检要求：
 - summary.definition 不能为空
 - levels 至少包含 level=1 的内容
+- slide_cards 至少包含 1 张卡片
 - 如果无法生成有效内容，请返回空对象 {} 而非报错";
 
         var userMessage = $"知识点标题：{kp.Title}\n" +
+                          $"知识点类型：{kp.Type}\n" +
                           $"所属章节：{string.Join(" > ", kp.ChapterPath)}\n" +
                           $"相关原文片段：\n{snippetTexts}";
 
-        return await _llmService.ChatJsonAsync<LearningContentDto>(
+        var content = await _llmService.ChatJsonAsync<LearningContentDto>(
             systemPrompt,
             userMessage,
             cancellationToken);
+
+        if (content == null)
+        {
+            return null;
+        }
+
+        var learningPack = new LearningPack
+        {
+            KpId = kp.KpId,
+            Summary = content.Summary,
+            Levels = content.Levels,
+            SnippetIds = kp.SnippetIds,
+            RelatedKpIds = new List<string>(),
+            SlideCards = content.SlideCards
+                .Select((dto, index) => new SlideCard
+                {
+                    SlideId = dto.SlideId ?? $"{kp.KpId}_slide_{index}",
+                    KpId = kp.KpId,
+                    Type = ConvertSlideType(dto.Type),
+                    Order = dto.Order,
+                    Title = dto.Title,
+                    HtmlContent = dto.Content,
+                    SourceReferences = new List<SourceReference>(),
+                    Config = new SlideConfig
+                    {
+                        AllowSkip = dto.Config?.AllowSkip ?? true,
+                        RequireComplete = dto.Config?.RequireComplete ?? false
+                    }
+                })
+                .ToList()
+        };
+
+        return learningPack;
+    }
+
+    private SlideType ConvertSlideType(SlideTypeDto dtoType)
+    {
+        return dtoType switch
+        {
+            SlideTypeDto.Cover => SlideType.Cover,
+            SlideTypeDto.Explanation => SlideType.Explanation,
+            SlideTypeDto.Detail => SlideType.Explanation,
+            SlideTypeDto.DeepDive => SlideType.DeepDive,
+            SlideTypeDto.Source => SlideType.Source,
+            SlideTypeDto.Quiz => SlideType.Quiz,
+            SlideTypeDto.Relations => SlideType.Relations,
+            SlideTypeDto.Summary => SlideType.Summary,
+            _ => SlideType.Explanation
+        };
     }
 
     private async Task<List<string>> FindRelatedKnowledgePointsAsync(

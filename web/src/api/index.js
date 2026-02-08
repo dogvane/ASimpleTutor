@@ -27,6 +27,9 @@ export const getDetailedContent = (kpId, level = 'brief') =>
     `/knowledge-points/detailed-content?kpId=${encodeURIComponent(kpId)}&level=${encodeURIComponent(level)}`,
   )
 
+export const getSlideCards = (kpId) =>
+  apiFetch(`/knowledge-points/slide-cards?kpId=${encodeURIComponent(kpId)}`)
+
 export const getExercisesStatus = (kpId) =>
   apiFetch(`/knowledge-points/exercises/status?kpId=${encodeURIComponent(kpId)}`)
 

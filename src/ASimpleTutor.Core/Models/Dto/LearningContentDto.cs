@@ -13,4 +13,7 @@ public class LearningContentDto
 
     [JsonProperty("levels")]
     public List<ContentLevel> Levels { get; set; } = new();
+
+    [JsonProperty("slide_cards")]
+    public List<SlideCardDto> SlideCards { get; set; } = new();
 }

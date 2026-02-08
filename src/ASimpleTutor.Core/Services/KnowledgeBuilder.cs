@@ -540,12 +540,13 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 }
 
                 // 生成学习内容
-                var content = await GenerateLearningContentAsync(kp, snippetTexts, cancellationToken);
+                var learningPack = await GenerateLearningContentAsync(kp, snippetTexts, cancellationToken);
 
-                if (content != null)
+                if (learningPack != null)
                 {
-                    kp.Summary = content.Summary;
-                    kp.Levels = content.Levels;
+                    kp.Summary = learningPack.Summary;
+                    kp.Levels = learningPack.Levels;
+                    kp.SlideCards = learningPack.SlideCards;
                 }
                 else
                 {
@@ -635,7 +636,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         }
     }
 
-    private async Task<LearningContentDto?> GenerateLearningContentAsync(
+    private async Task<LearningPack?> GenerateLearningContentAsync(
         KnowledgePoint kp,
         string snippetTexts,
         CancellationToken cancellationToken)
@@ -646,7 +647,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 {
   ""summary"": {
     ""definition"": ""知识点的精确定义（1-3句，必须填写）"",
-    ""key_points"": [""核心要点1"", ""核心要点2"", ""核心要点3""] ,
+    ""key_points"": [""核心要点1"", ""核心要点2"", ""核心要点3""],
     ""pitfalls"": [""常见误区1"", ""常见误区2""]
   },
   ""levels"": [
@@ -665,6 +666,28 @@ public class KnowledgeBuilder : IKnowledgeBuilder
       ""title"": ""深入"",
       ""content"": ""边界条件、对比、推导""
     }
+  ],
+  ""slide_cards"": [
+    {
+      ""type"": ""cover|explanation|detail|deepDive|source|quiz|relations|summary"",
+      ""order"": 0,
+      ""title"": ""卡片标题"",
+      ""subtitle"": ""卡片副标题（可选）"",
+      ""content"": ""幻灯片内容，可以使用 Markdown 格式"",
+      ""kpLinks"": [
+        {
+          ""text"": ""链接文本"",
+          ""targetKpId"": ""目标知识点ID"",
+          ""relationship"": ""prerequisite|related|contrast|similar|contains"",
+          ""targetTitle"": ""目标知识点标题""
+        }
+      ],
+      ""config"": {
+        ""allowSkip"": true,
+        ""requireComplete"": false,
+        ""estimatedTime"": 60
+      }
+    }
   ]
 }
 
@@ -673,11 +696,14 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 2. 定义要简洁准确，要点要清晰实用
 3. 常见误区要具体且有针对性
 4. 层次化内容要循序渐进
-5. summary.definition 必须填写，不能为空
+5. 幻灯片卡片要包含 3-5 张，类型要多样化
+6. content 可以使用 Markdown 格式
+7. summary.definition 必须填写，不能为空
 
 自检要求：
 - summary.definition 不能为空
 - levels 至少包含 level=1 的内容
+- slide_cards 至少包含 1 张卡片
 - 如果无法生成有效内容，请返回空对象 {} 而非报错";
 
         var userMessage = $"知识点标题：{kp.Title}\n" +
@@ -685,10 +711,59 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                           $"所属章节：{string.Join(" > ", kp.ChapterPath)}\n" +
                           $"相关原文片段：\n{snippetTexts}";
 
-        return await _llmService.ChatJsonAsync<LearningContentDto>(
+        var content = await _llmService.ChatJsonAsync<LearningContentDto>(
             systemPrompt,
             userMessage,
             cancellationToken);
+
+        if (content == null)
+        {
+            return null;
+        }
+
+        var learningPack = new LearningPack
+        {
+            KpId = kp.KpId,
+            Summary = content.Summary,
+            Levels = content.Levels,
+            SnippetIds = kp.SnippetIds,
+            RelatedKpIds = new List<string>(),
+            SlideCards = content.SlideCards
+                .Select((dto, index) => new SlideCard
+                {
+                    SlideId = dto.SlideId ?? $"{kp.KpId}_slide_{index}",
+                    KpId = kp.KpId,
+                    Type = ConvertSlideType(dto.Type),
+                    Order = dto.Order,
+                    Title = dto.Title,
+                    HtmlContent = dto.Content,
+                    SourceReferences = new List<SourceReference>(),
+                    Config = new SlideConfig
+                    {
+                        AllowSkip = dto.Config?.AllowSkip ?? true,
+                        RequireComplete = dto.Config?.RequireComplete ?? false
+                    }
+                })
+                .ToList()
+        };
+
+        return learningPack;
+    }
+
+    private SlideType ConvertSlideType(SlideTypeDto dtoType)
+    {
+        return dtoType switch
+        {
+            SlideTypeDto.Cover => SlideType.Cover,
+            SlideTypeDto.Explanation => SlideType.Explanation,
+            SlideTypeDto.Detail => SlideType.Explanation,
+            SlideTypeDto.DeepDive => SlideType.DeepDive,
+            SlideTypeDto.Source => SlideType.Source,
+            SlideTypeDto.Quiz => SlideType.Quiz,
+            SlideTypeDto.Relations => SlideType.Relations,
+            SlideTypeDto.Summary => SlideType.Summary,
+            _ => SlideType.Explanation
+        };
     }
 
     private string ReconstructDocumentContent(Document doc)

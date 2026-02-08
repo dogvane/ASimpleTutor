@@ -29,6 +29,11 @@ public class LearningPack
     /// 关联知识点 ID 列表
     /// </summary>
     public List<string> RelatedKpIds { get; set; } = new();
+
+    /// <summary>
+    /// 预生成的幻灯片卡片列表
+    /// </summary>
+    public List<SlideCard> SlideCards { get; set; } = new();
 }
 
 /// <summary>

@@ -152,4 +152,55 @@ public class KnowledgePointsController : ControllerBase
             }
         });
     }
+
+    /// <summary>
+    /// 获取幻灯片卡片
+    /// </summary>
+    [HttpGet("slide-cards")]
+    public IActionResult GetSlideCards([FromQuery] string kpId)
+    {
+        if (_knowledgeSystem == null)
+        {
+            return NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
+        }
+
+        if (string.IsNullOrEmpty(kpId))
+        {
+            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "kpId 不能为空" } });
+        }
+
+        var kp = _knowledgeSystem.KnowledgePoints.FirstOrDefault(p => p.KpId == kpId);
+        if (kp == null)
+        {
+            return NotFound(new { error = new { code = "KP_NOT_FOUND", message = $"知识点不存在: {kpId}" } });
+        }
+
+        // 直接返回预存的 SlideCards
+        var slideCards = kp.SlideCards ?? new List<SlideCard>();
+
+        return Ok(new
+        {
+            id = kp.KpId,
+            title = kp.Title,
+            slideCards = slideCards.Select(sc => new
+            {
+                slideId = sc.SlideId,
+                type = sc.Type.ToString(),
+                order = sc.Order,
+                title = sc.Title,
+                htmlContent = sc.HtmlContent,
+                speechScript = sc.SpeechScript,
+                sourceReferences = sc.SourceReferences.Select(sr => new
+                {
+                    snippetId = sr.SnippetId,
+                    filePath = sr.FilePath,
+                    headingPath = sr.HeadingPath,
+                    startLine = sr.StartLine,
+                    endLine = sr.EndLine,
+                    content = sr.Content
+                }),
+                config = sc.Config
+            })
+        });
+    }
 }

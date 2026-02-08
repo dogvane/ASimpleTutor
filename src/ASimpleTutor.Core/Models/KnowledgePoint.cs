@@ -205,6 +205,16 @@ public enum SlideType
     Quiz,
 
     /// <summary>
+    /// 原文对照
+    /// </summary>
+    Source,
+
+    /// <summary>
+    /// 知识关联
+    /// </summary>
+    Relations,
+
+    /// <summary>
     /// 总结回顾
     /// </summary>
     Summary
