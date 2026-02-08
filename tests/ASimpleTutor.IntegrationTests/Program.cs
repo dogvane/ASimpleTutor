@@ -16,7 +16,6 @@ namespace ASimpleTutor.IntegrationTests;
 public class Program
 {
     private static ILogger<MarkdownScanner> _scannerLogger = null!;
-    private static ILogger<SourceTracker> _trackerLogger = null!;
     private static ILogger<LearningGenerator> _generatorLogger = null!;
     private static ILogger<KnowledgeBuilder> _builderLogger = null!;
     private static ILogger<ExerciseService> _exerciseLogger = null!;
@@ -78,14 +77,11 @@ public class Program
             builder.SetMinimumLevel(LogLevel.Information);
         });
         _scannerLogger = loggerFactory.CreateLogger<MarkdownScanner>();
-        _trackerLogger = loggerFactory.CreateLogger<SourceTracker>();
         _generatorLogger = loggerFactory.CreateLogger<LearningGenerator>();
         _builderLogger = loggerFactory.CreateLogger<KnowledgeBuilder>();
         _exerciseLogger = loggerFactory.CreateLogger<ExerciseService>();
 
         // 2. 手动创建服务依赖
-        var sourceTracker = new SourceTracker(_trackerLogger);
-        
         // 读取 SectioningOptions 配置
         var sectioningOptions = new SectioningOptions();
         configuration.GetSection("Sectioning").Bind(sectioningOptions);
@@ -98,9 +94,9 @@ public class Program
         var results = new IntegrationTestResults();
 
         await TestDocumentScanner(scanner, dataPath, outputPath, results);
-        var knowledgeSystem = await TestKnowledgeBuilder(sourceTracker, scanner, llmService, dataPath, outputPath, results);
-         await TestLearningGenerator(sourceTracker, llmService, knowledgeSystem, outputPath, results);
-         await TestExerciseGenerator(sourceTracker, llmService, knowledgeSystem, outputPath, results);
+        var (knowledgeSystem, documents) = await TestKnowledgeBuilder(scanner, llmService, dataPath, outputPath, results);
+        await TestLearningGenerator(llmService, knowledgeSystem, documents, outputPath, results);
+        await TestExerciseGenerator(llmService, knowledgeSystem, outputPath, results);
 
         // 4. 保存测试结果摘要
         var summaryPath = Path.Combine(outputPath, "test_summary.json");
@@ -236,8 +232,7 @@ public class Program
         Console.WriteLine();
     }
 
-    private static async Task<KnowledgeSystem?> TestKnowledgeBuilder(
-        ISourceTracker sourceTracker,
+    private static async Task<(KnowledgeSystem? KnowledgeSystem, List<Document>? Documents)> TestKnowledgeBuilder(
         IScannerService scanner,
         ILLMService llmService,
         string dataPath,
@@ -248,15 +243,14 @@ public class Program
         Console.WriteLine("-".PadRight(40, '-'));
 
         KnowledgeSystem? knowledgeSystem = null;
+        List<Document>? documents = null;
 
         try
         {
-            // 创建 RAG 服务（使用内存存储）
-            var ragLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<InMemorySimpleRagService>();
-            var ragService = new InMemorySimpleRagService(sourceTracker, ragLogger);
-
-            var builder = new KnowledgeBuilder(scanner, ragService, sourceTracker, llmService, _builderLogger);
-            knowledgeSystem = await builder.BuildAsync("test-book", dataPath);
+            var builder = new KnowledgeBuilder(scanner, llmService, _builderLogger);
+            var (ks, docs) = await builder.BuildAsync("test-book", dataPath);
+            knowledgeSystem = ks;
+            documents = docs;
 
             results.KnowledgeBuilderTest = new KnowledgeBuilderTestResult
             {
@@ -295,17 +289,17 @@ public class Program
         {
             results.KnowledgeBuilderTest = new KnowledgeBuilderTestResult { Success = false, ErrorMessage = ex.Message };
             Console.WriteLine($"  失败: {ex.Message}");
-            return null;
+            return (null, null);
         }
 
         Console.WriteLine();
-        return knowledgeSystem;
+        return (knowledgeSystem, documents);
     }
 
     private static async Task TestLearningGenerator(
-        ISourceTracker sourceTracker,
         ILLMService llmService,
         KnowledgeSystem? knowledgeSystem,
+        List<Document>? documents,
         string outputPath,
         IntegrationTestResults results)
     {
@@ -333,10 +327,13 @@ public class Program
             var testKp = knowledgeSystem!.KnowledgePoints.First();
             testKp.SnippetIds = new List<string> { snippetIds.First() };
 
-            var ragLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<InMemorySimpleRagService>();
-            var ragService = new InMemorySimpleRagService(sourceTracker, ragLogger);
+            // 创建知识体系存储服务
+            var storeLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<KnowledgeSystemStore>();
+            var store = new KnowledgeSystemStore(storeLogger, outputPath);
+            await store.SaveAsync(knowledgeSystem!, documents, CancellationToken.None);
 
-            var generator = new LearningGenerator(ragService, sourceTracker, llmService, _generatorLogger);
+            // 创建学习内容生成服务
+            var generator = new LearningGenerator(store, llmService, _generatorLogger);
             var learningPack = await generator.GenerateAsync(testKp);
 
             results.LearningGeneratorTest = new LearningGeneratorTestResult
@@ -380,7 +377,6 @@ public class Program
     }
 
     private static async Task TestExerciseGenerator(
-        ISourceTracker sourceTracker,
         ILLMService llmService,
         KnowledgeSystem? knowledgeSystem,
         string outputPath,
@@ -418,12 +414,13 @@ public class Program
                 return;
             }
 
-            // 创建 RAG 服务
-            var ragLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<InMemorySimpleRagService>();
-            var ragService = new InMemorySimpleRagService(sourceTracker, ragLogger);
+            // 创建知识体系存储服务
+            var storeLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<KnowledgeSystemStore>();
+            var store = new KnowledgeSystemStore(storeLogger, outputPath);
+            await store.SaveAsync(knowledgeSystem!, null, CancellationToken.None);
 
             // 创建习题服务
-            var exerciseService = new ExerciseService(ragService, sourceTracker, llmService, _exerciseLogger);
+            var exerciseService = new ExerciseService(llmService, store, _exerciseLogger);
 
             // 选择一个知识点进行测试
             var testKp = knowledgeSystem.KnowledgePoints
