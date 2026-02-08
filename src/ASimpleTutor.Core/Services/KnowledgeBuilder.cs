@@ -2,6 +2,7 @@ using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
 using ASimpleTutor.Core.Models.Dto;
 using Microsoft.Extensions.Logging;
+using System.IO;
 
 namespace ASimpleTutor.Core.Services;
 
@@ -120,20 +121,40 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         List<Document> documents,
         CancellationToken cancellationToken)
     {
-        // 获取文档的 chunk ID 列表
-        var documentChunkIds = documents.ToDictionary(
-            d => d.DocId,
-            d => d.DocId + "_chunk_0"
-        );
+        // 为每个文档的每个 Section 创建唯一的 chunk ID
+        var sectionChunkIds = new Dictionary<string, string>();
+        var sectionContentMap = new Dictionary<string, string>();
+        var sectionDocMap = new Dictionary<string, string>(); // 记录 section chunk ID 对应的文档 ID
+        var sectionPathMap = new Dictionary<string, List<string>>(); // 记录 section chunk ID 对应的章节路径
+
+        // 构建 section chunk ID 和内容映射
+        foreach (var doc in documents)
+        {
+            if (doc.Sections != null && doc.Sections.Count > 0)
+            {
+                // 使用深度优先搜索遍历所有层级的章节
+                TraverseSectionsAsync(doc, doc.Sections, sectionChunkIds, sectionContentMap, sectionDocMap, sectionPathMap);
+            }
+            else
+            {
+                // 如果文档没有 Sections，为整个文档创建一个 chunk ID
+                var docId = $"{doc.DocId}_chunk_0";
+                sectionChunkIds[docId] = docId;
+                sectionDocMap[docId] = doc.DocId;
+                sectionPathMap[docId] = new List<string> { doc.Title };
+                sectionContentMap[docId] = ReconstructDocumentContent(doc);
+            }
+        }
 
         // 构建 chunk ID 列表说明
         var chunkIdList = new System.Text.StringBuilder();
         chunkIdList.AppendLine("可用原文片段 ID（chunk_id）：");
-        if (documentChunkIds.Count > 0)
+        if (sectionChunkIds.Count > 0)
         {
-            foreach (var kv in documentChunkIds)
+            foreach (var kv in sectionChunkIds)
             {
-                chunkIdList.AppendLine("  - " + kv.Key + " -> " + kv.Value);
+                var sectionPath = sectionPathMap.TryGetValue(kv.Key, out var path) ? string.Join(" > ", path) : "";
+                chunkIdList.AppendLine($"  - {kv.Key} (章节: {sectionPath})");
             }
         }
         else
@@ -152,7 +173,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
       ""title"": ""知识点标题"",
       ""type"": ""concept|chapter|process|api|bestPractice"",
       ""aliases"": [""别名1"", ""别名2""],
-      ""chapter_path"": [""章节1"", ""章节2""],
+      ""chapter_path"": [""章节1"", ""章节2"", ""章节3""],
       ""importance"": 0.0-1.0,
       ""snippet_ids"": [""chunk_id1"", ""chunk_id2""],
       ""summary"": ""一句话总结（必须填写）"",
@@ -178,6 +199,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 6. summary 必须填写，不能为空
 7. type 字段必须填写且有效
 8. doc_id 必须填写，标识知识点来源的文档
+9. chapter_path 必须反映知识点所在的完整章节层次结构
 
 自检要求（生成后请检查）：
 - knowledge_points 不能为空，如果确实没有知识点请返回空数组并说明原因
@@ -185,60 +207,47 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 - 每个知识点的 type 必须是有效的类型之一
 - 所有标题必须非空且唯一（如果重复请合并）";
 
-        var documentContent = string.Join("\n\n", documents.Select(d =>
-            $"# {d.Title}\n{ReconstructDocumentContent(d)}"));
-
-        _logger.LogInformation("文档总字符数: {CharCount}", documentContent.Length);
-        _logger.LogInformation("开始调用 LLM 提取知识点...");
+        var knowledgePoints = new List<KnowledgePointDto>();
 
         try
         {
-            // 处理长文档：基于文档结构拆分成多个部分
-            const int maxContentLength = 10000; // 设置最大内容长度
-            var knowledgePoints = new List<KnowledgePointDto>();
-            
-            if (documentContent.Length > maxContentLength)
+            // 对每个 section 单独处理，提取知识点
+            _logger.LogInformation("开始基于 Section 结构提取知识点，共 {SectionCount} 个 Section", sectionChunkIds.Count);
+
+            foreach (var sectionId in sectionChunkIds.Keys)
             {
-                _logger.LogInformation("文档过长，开始基于结构拆分处理...");
-                
-                // 基于文档结构拆分成多个部分
-                var parts = SplitDocumentByStructure(documents, maxContentLength);
-                
-                for (int i = 0; i < parts.Count; i++)
-                {
-                    _logger.LogInformation("处理文档部分 {PartIndex}/{TotalParts}, 字符数: {CharCount}", 
-                        i + 1, parts.Count, parts[i].Length);
-                    
-                    var partResponse = await _llmService.ChatJsonAsync<KnowledgePointsResponse>(
-                        systemPrompt,
-                        $"请分析以下文档部分并提取知识点：\n\n{parts[i]}",
-                        cancellationToken);
-                    
-                    if (partResponse?.KnowledgePoints != null && partResponse.KnowledgePoints.Count > 0)
-                    {
-                        _logger.LogInformation("部分 {PartIndex} 提取到 {Count} 个知识点", 
-                            i + 1, partResponse.KnowledgePoints.Count);
-                        knowledgePoints.AddRange(partResponse.KnowledgePoints);
-                    }
-                }
-                
-                _logger.LogInformation("基于结构拆分处理完成，共提取到 {Count} 个知识点", knowledgePoints.Count);
-            }
-            else
-            {
-                // 文档长度适中，直接处理
+                var sectionContent = sectionContentMap[sectionId];
+                var sectionPath = sectionPathMap[sectionId];
+                var docId = sectionDocMap[sectionId];
+
+                _logger.LogInformation("处理 Section: {SectionPath}, 字符数: {CharCount}", string.Join(" > ", sectionPath), sectionContent.Length);
+
+                // 调用 LLM 提取当前 section 的知识点
                 var response = await _llmService.ChatJsonAsync<KnowledgePointsResponse>(
                     systemPrompt,
-                    $"请分析以下文档并提取知识点：\n\n{documentContent}",
+                    $"请分析以下章节内容并提取知识点：\n\n{sectionContent}",
                     cancellationToken);
 
-                _logger.LogInformation("LLM 调用完成，提取到 {Count} 个知识点", response?.KnowledgePoints?.Count ?? 0);
-                
-                if (response?.KnowledgePoints != null)
+                if (response?.KnowledgePoints != null && response.KnowledgePoints.Count > 0)
                 {
-                    knowledgePoints = response.KnowledgePoints;
+                    _logger.LogInformation("Section {SectionPath} 提取到 {Count} 个知识点", string.Join(" > ", sectionPath), response.KnowledgePoints.Count);
+
+                    // 为每个知识点添加正确的文档 ID 和章节路径
+                    foreach (var kp in response.KnowledgePoints)
+                    {
+                        kp.DocId = docId;
+                        // 如果 LLM 没有提供章节路径，使用 section 的路径
+                        if (kp.ChapterPath == null || kp.ChapterPath.Count == 0)
+                        {
+                            kp.ChapterPath = sectionPath;
+                        }
+                    }
+
+                    knowledgePoints.AddRange(response.KnowledgePoints);
                 }
             }
+
+            _logger.LogInformation("基于 Section 结构提取完成，共提取到 {Count} 个知识点", knowledgePoints.Count);
 
             // 自检：验证响应数据
             if (knowledgePoints == null || knowledgePoints.Count == 0)
@@ -287,18 +296,14 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 
                 _logger.LogInformation("自检完成，有效知识点: {ValidCount}/{TotalCount}", validPoints.Count, knowledgePoints.Count);
 
-                // 将 DTO 转换为标准的 KnowledgePoint，截取章节路径到前两层
+                // 将 DTO 转换为标准的 KnowledgePoint
                 var kpList = validPoints
                     .Select((kp, index) =>
                     {
                         var kpModel = kp.ToKnowledgePoint();
                         kpModel.KpId = $"kp_{index:D4}";
                         kpModel.BookRootId = documents.FirstOrDefault()?.BookRootId ?? string.Empty;
-                        // 截取章节路径到前两层
-                        if (kpModel.ChapterPath.Count > 2)
-                        {
-                            kpModel.ChapterPath = kpModel.ChapterPath.Take(2).ToList();
-                        }
+                        // 保留完整的章节路径
                         return kpModel;
                     })
                     .ToList();
@@ -325,6 +330,13 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 
         foreach (var doc in documents)
         {
+            // 读取文档文件的所有行
+            string[] docLines = Array.Empty<string>();
+            if (File.Exists(doc.Path))
+            {
+                docLines = File.ReadAllLines(doc.Path);
+            }
+            
             // 添加文档标题
             currentPart.AppendLine($"# {doc.Title}");
             currentPart.AppendLine();
@@ -342,26 +354,20 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 sectionContent.AppendLine($"{headingPrefix} {section.HeadingPath.Last()}");
                 sectionContent.AppendLine();
 
-                // 章节内容已不再提取，Paragraphs 为空
-                // foreach (var paragraph in section.Paragraphs)
-                // {
-                //     sectionContent.AppendLine(paragraph.Content);
-                // }
-                sectionContent.AppendLine();
-
-                // 检查当前部分加上新章节是否会超过最大长度
-                if (currentPart.Length + sectionContent.Length > maxLength)
+                // 从文件中提取章节内容
+                if (docLines.Length > 0 && section.StartLine >= 0 && section.EndLine <= docLines.Length)
                 {
-                    // 如果当前部分不为空，添加到结果中
-                    if (currentPart.Length > 0)
+                    for (int i = section.StartLine; i < section.EndLine; i++)
                     {
-                        parts.Add(currentPart.ToString());
-                        currentPart.Clear();
-                        // 重新添加文档标题
-                        currentPart.AppendLine($"# {doc.Title}");
-                        currentPart.AppendLine();
+                        sectionContent.AppendLine(docLines[i]);
                     }
                 }
+                else
+                {
+                    _logger.LogWarning("无法提取章节内容: DocLines={DocLines}, StartLine={StartLine}, EndLine={EndLine}", 
+                        docLines.Length, section.StartLine, section.EndLine);
+                }
+                sectionContent.AppendLine();
 
                 // 检查章节本身是否超过最大长度
                 if (sectionContent.Length > maxLength)
@@ -381,6 +387,20 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 }
                 else
                 {
+                    // 检查当前部分加上新章节是否会超过最大长度
+                    if (currentPart.Length + sectionContent.Length > maxLength)
+                    {
+                        // 如果当前部分不为空，添加到结果中
+                        if (currentPart.Length > 0)
+                        {
+                            parts.Add(currentPart.ToString());
+                            currentPart.Clear();
+                            // 重新添加文档标题
+                            currentPart.AppendLine($"# {doc.Title}");
+                            currentPart.AppendLine();
+                        }
+                    }
+
                     // 将章节添加到当前部分
                     currentPart.Append(sectionContent);
                 }
@@ -416,7 +436,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 var lastNewline = content.LastIndexOf("\n\n", endPosition);
                 if (lastNewline > currentPosition + maxLength / 2) // 确保拆分点不是太靠近当前位置
                 {
-                    endPosition = lastNewline;
+                    endPosition = lastNewline + 2; // 跳过 "\n\n"
                 }
                 else
                 {
@@ -424,13 +444,14 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                     var lastSingleNewline = content.LastIndexOf("\n", endPosition);
                     if (lastSingleNewline > currentPosition + maxLength / 2)
                     {
-                        endPosition = lastSingleNewline;
+                        endPosition = lastSingleNewline + 1; // 跳过 "\n"
                     }
                 }
             }
             
             // 添加当前部分
-            parts.Add(content.Substring(currentPosition, endPosition - currentPosition));
+            var part = content.Substring(currentPosition, endPosition - currentPosition);
+            parts.Add(part);
             currentPosition = endPosition;
         }
 
@@ -457,7 +478,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 var lastNewline = content.LastIndexOf("\n\n", endPosition);
                 if (lastNewline > currentPosition + maxLength / 2) // 确保拆分点不是太靠近当前位置
                 {
-                    endPosition = lastNewline;
+                    endPosition = lastNewline + 2; // 跳过 "\n\n"
                 }
                 else
                 {
@@ -465,13 +486,14 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                     var lastSingleNewline = content.LastIndexOf("\n", endPosition);
                     if (lastSingleNewline > currentPosition + maxLength / 2)
                     {
-                        endPosition = lastSingleNewline;
+                        endPosition = lastSingleNewline + 1; // 跳过 "\n"
                     }
                 }
             }
             
             // 添加当前部分
-            parts.Add(content.Substring(currentPosition, endPosition - currentPosition));
+            var part = content.Substring(currentPosition, endPosition - currentPosition);
+            parts.Add(part);
             currentPosition = endPosition;
         }
 
@@ -611,6 +633,24 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 var snippets = _sourceTracker.GetSources(kp.SnippetIds);
                 var snippetTexts = string.Join("\n\n", snippets.Select(s => s.Content));
 
+                // 检查 snippetTexts 是否为空或长度小于 100
+                if (string.IsNullOrEmpty(snippetTexts) || snippetTexts.Length < 100)
+                {
+                    _logger.LogError("原文片段为空或长度不足: {KpId}, 长度: {Length}", kp.KpId, snippetTexts?.Length ?? 0);
+                    // 降级：设置基本内容
+                    kp.Summary = new Summary
+                    {
+                        Definition = $"这是关于 {kp.Title} 的知识点，位于 {string.Join(" > ", kp.ChapterPath)} 章节。",
+                        KeyPoints = new List<string> { "内容生成失败，请查看原文" },
+                        Pitfalls = new List<string>()
+                    };
+                    kp.Levels = new List<ContentLevel>
+                    {
+                        new ContentLevel { Level = 1, Title = "概览", Content = "无法生成层次化内容，请查看原文片段" }
+                    };
+                    continue;
+                }
+
                 // 生成学习内容
                 var content = await GenerateLearningContentAsync(kp, snippetTexts, cancellationToken);
 
@@ -652,6 +692,57 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         }
 
         _logger.LogInformation("学习内容生成完成");
+    }
+
+    /// <summary>
+    /// 使用深度优先搜索遍历所有层级的章节，只添加叶子节点到处理列表
+    /// </summary>
+    private void TraverseSectionsAsync(
+        Document doc,
+        List<Section> sections,
+        Dictionary<string, string> sectionChunkIds,
+        Dictionary<string, string> sectionContentMap,
+        Dictionary<string, string> sectionDocMap,
+        Dictionary<string, List<string>> sectionPathMap)
+    {
+        foreach (var section in sections)
+        {
+            // 递归处理子章节
+            if (section.SubSections != null && section.SubSections.Count > 0)
+            {
+                TraverseSectionsAsync(doc, section.SubSections, sectionChunkIds, sectionContentMap, sectionDocMap, sectionPathMap);
+                // 有子章节，当前节点不单独处理
+            }
+            else
+            {
+                // 没有子章节，添加到处理列表
+                var sectionId = $"{doc.DocId}_section_{section.StartLine}_{section.EndLine}";
+                sectionChunkIds[sectionId] = sectionId;
+                sectionDocMap[sectionId] = doc.DocId;
+                sectionPathMap[sectionId] = section.HeadingPath;
+
+                // 构建 section 内容
+                var sectionContent = new System.Text.StringBuilder();
+                var headingLevel = section.HeadingPath.Count;
+                var headingPrefix = new string('#', headingLevel + 1); // +1 因为文档标题是 H1
+                sectionContent.AppendLine($"{headingPrefix} {section.HeadingPath.Last()}");
+                sectionContent.AppendLine();
+
+                // 从文件中提取章节内容
+                if (File.Exists(doc.Path))
+                {
+                    var docLines = File.ReadAllLines(doc.Path);
+                    if (docLines.Length > 0 && section.StartLine >= 0 && section.EndLine <= docLines.Length)
+                    {
+                        for (int i = section.StartLine; i < section.EndLine; i++)
+                        {
+                            sectionContent.AppendLine(docLines[i]);
+                        }
+                    }
+                }
+                sectionContentMap[sectionId] = sectionContent.ToString();
+            }
+        }
     }
 
     private async Task<LearningContentDto?> GenerateLearningContentAsync(
@@ -712,25 +803,16 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 
     private string ReconstructDocumentContent(Document doc)
     {
-        var sb = new System.Text.StringBuilder();
-
-        foreach (var section in doc.Sections)
+        // 从文件路径读取原始文档内容
+        if (File.Exists(doc.Path))
         {
-            if (section.HeadingPath.Count > 0)
-            {
-                sb.AppendLine($"# {string.Join(" > ", section.HeadingPath)}");
-            }
-
-            // 章节内容已不再提取，Paragraphs 为空
-            // foreach (var para in section.Paragraphs)
-            // {
-            //     sb.AppendLine(para.Content);
-            // }
-
-            sb.AppendLine();
+            var content = File.ReadAllText(doc.Path);
+            return content;
         }
-
-        return sb.ToString();
+        
+        // 如果文件不存在，返回空字符串
+        _logger.LogWarning("文档文件不存在: {FilePath}", doc.Path);
+        return string.Empty;
     }
 
     private static KnowledgeTreeNode BuildKnowledgeTree(List<KnowledgePoint> knowledgePoints)

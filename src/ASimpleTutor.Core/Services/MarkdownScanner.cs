@@ -624,10 +624,17 @@ public class MarkdownScanner : IScannerService
         var sections = new List<Section>();
         var sectionCounter = 0;
         
+        // 收集所有标题节点用于计算结束行号
+        var allHeadingNodes = new List<HeadingNode>();
+        CollectHeadingNodesFromTree(headingTree, allHeadingNodes);
+        
+        // 按行号排序
+        allHeadingNodes.Sort((a, b) => a.LineNumber.CompareTo(b.LineNumber));
+        
         // 递归构建所有章节
         foreach (var headingNode in headingTree)
         {
-            var section = BuildSectionFromHeading(headingNode, optimalLevels, lines, ref sectionCounter);
+            var section = BuildSectionFromHeading(headingNode, optimalLevels, lines, allHeadingNodes, ref sectionCounter);
             sections.Add(section);
         }
         
@@ -637,7 +644,7 @@ public class MarkdownScanner : IScannerService
     /// <summary>
     /// 从标题节点构建章节
     /// </summary>
-    private Section BuildSectionFromHeading(HeadingNode headingNode, Dictionary<HeadingNode, int> optimalLevels, string[] lines, ref int sectionCounter)
+    private Section BuildSectionFromHeading(HeadingNode headingNode, Dictionary<HeadingNode, int> optimalLevels, string[] lines, List<HeadingNode> allHeadingNodes, ref int sectionCounter)
     {
         var section = new Section
         {
@@ -649,6 +656,21 @@ public class MarkdownScanner : IScannerService
             FilteredLength = headingNode.OriginalLength - headingNode.EffectiveLength
         };
         
+        // 计算章节的行号范围
+        section.StartLine = headingNode.LineNumber;
+        
+        // 找到下一个同级或更高级的标题作为结束行号
+        var nextHeadingIndex = allHeadingNodes.FindIndex(n => n.LineNumber > headingNode.LineNumber && n.Level <= headingNode.Level);
+        if (nextHeadingIndex >= 0)
+        {
+            section.EndLine = allHeadingNodes[nextHeadingIndex].LineNumber;
+        }
+        else
+        {
+            // 没有找到下一个标题，使用文档的最后一行
+            section.EndLine = lines.Length;
+        }
+        
         // 获取当前节点的最优层级
         optimalLevels.TryGetValue(headingNode, out var optimalLevel);
         optimalLevel = optimalLevel > 0 ? optimalLevel : headingNode.Level;
@@ -658,12 +680,24 @@ public class MarkdownScanner : IScannerService
         {
             foreach (var child in headingNode.Children)
             {
-                var childSection = BuildSectionFromHeading(child, optimalLevels, lines, ref sectionCounter);
+                var childSection = BuildSectionFromHeading(child, optimalLevels, lines, allHeadingNodes, ref sectionCounter);
                 section.SubSections.Add(childSection);
             }
         }
         
         return section;
+    }
+
+    /// <summary>
+    /// 从标题树中收集所有标题节点
+    /// </summary>
+    private void CollectHeadingNodesFromTree(List<HeadingNode> headingTree, List<HeadingNode> allNodes)
+    {
+        foreach (var node in headingTree)
+        {
+            allNodes.Add(node);
+            CollectHeadingNodesFromTree(node.Children, allNodes);
+        }
     }
 
     /// <summary>

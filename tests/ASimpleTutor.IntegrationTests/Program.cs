@@ -98,9 +98,9 @@ public class Program
         var results = new IntegrationTestResults();
 
         await TestDocumentScanner(scanner, dataPath, outputPath, results);
-        // var knowledgeSystem = await TestKnowledgeBuilder(sourceTracker, scanner, llmService, dataPath, outputPath, results);
-        // await TestLearningGenerator(sourceTracker, llmService, knowledgeSystem, outputPath, results);
-        // await TestExerciseGenerator(sourceTracker, llmService, knowledgeSystem, outputPath, results);
+        var knowledgeSystem = await TestKnowledgeBuilder(sourceTracker, scanner, llmService, dataPath, outputPath, results);
+         await TestLearningGenerator(sourceTracker, llmService, knowledgeSystem, outputPath, results);
+         await TestExerciseGenerator(sourceTracker, llmService, knowledgeSystem, outputPath, results);
 
         // 4. 保存测试结果摘要
         var summaryPath = Path.Combine(outputPath, "test_summary.json");

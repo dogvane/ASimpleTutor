@@ -57,6 +57,16 @@ public class Section
     public List<Section> SubSections { get; set; } = new();
 
     /// <summary>
+    /// 章节开始的行号（包含标题行）
+    /// </summary>
+    public int StartLine { get; set; }
+
+    /// <summary>
+    /// 章节结束的行号（不包含）
+    /// </summary>
+    public int EndLine { get; set; }
+
+    /// <summary>
     /// 原始字符数（包含所有内容，包括代码块和HTML标签）
     /// </summary>
     public int OriginalLength { get; set; }

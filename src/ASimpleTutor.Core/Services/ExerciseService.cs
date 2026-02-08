@@ -55,6 +55,13 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
         int count,
         CancellationToken cancellationToken)
     {
+        // 检查 snippetTexts 是否为空或长度小于 100
+        if (string.IsNullOrEmpty(snippetTexts) || snippetTexts.Length < 100)
+        {
+            _logger.LogError("原文片段为空或长度不足: {KpId}, 长度: {Length}", kp.KpId, snippetTexts?.Length ?? 0);
+            return new List<Exercise>();
+        }
+
         var systemPrompt = @"你是一个习题生成专家。你的任务是根据提供的知识点生成高质量的练习题。
 
 请生成 " + count + @" 道选择题，题型应多样化，包括：
@@ -68,9 +75,9 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
       ""type"": ""SingleChoice|TrueFalse"",
       ""difficulty"": 1-5,
       ""question"": ""题目内容"",
-      ""options"": [""选项A"", ""选项B"", ""选项C"", ""选项D""],
+      ""options"": [""选项A"", ""选项B"", ""选项C"", ""选项D""] ,
       ""correct_answer"": ""选项A"",
-      ""key_points"": [""考查要点1"", ""考查要点2""],
+      ""key_points"": [""考查要点1"", ""考查要点2""] ,
       ""explanation"": ""答案解释（必须填写）""
     }
   ]
@@ -97,9 +104,9 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
   ""type"": ""SingleChoice"",
   ""difficulty"": 1,
   ""question"": ""智能体的核心特征是什么？"",
-  ""options"": [""能够感知环境并自主行动"", ""只能执行固定程序"", ""需要人工干预"", ""只能处理简单任务""],
+  ""options"": [""能够感知环境并自主行动"", ""只能执行固定程序"", ""需要人工干预"", ""只能处理简单任务""] ,
   ""correct_answer"": ""能够感知环境并自主行动"",
-  ""key_points"": [""感知能力"", ""自主决策""],
+  ""key_points"": [""感知能力"", ""自主决策""] ,
   ""explanation"": ""智能体的核心特征是能够感知环境变化，并根据环境信息自主做出决策和采取行动。""
 }
 
@@ -108,9 +115,9 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
   ""type"": ""TrueFalse"",
   ""difficulty"": 1,
   ""question"": ""智能体只能执行预设的程序，不能自主决策。"",
-  ""options"": [""正确"", ""错误""],
+  ""options"": [""正确"", ""错误""] ,
   ""correct_answer"": ""错误"",
-  ""key_points"": [""自主决策能力""],
+  ""key_points"": [""自主决策能力""] ,
   ""explanation"": ""错误。智能体具备自主决策能力，能够根据环境信息做出判断和选择，而不是只能执行预设的程序。""
 }
 

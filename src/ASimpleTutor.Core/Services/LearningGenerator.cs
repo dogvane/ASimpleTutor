@@ -43,6 +43,14 @@ public class LearningGenerator : ILearningGenerator
             var snippets = _sourceTracker.GetSources(kp.SnippetIds);
             var snippetTexts = string.Join("\n\n", snippets.Select(s => s.Content));
 
+            // 检查 snippetTexts 是否为空或长度小于 100
+            if (string.IsNullOrEmpty(snippetTexts) || snippetTexts.Length < 100)
+            {
+                _logger.LogError("原文片段为空或长度不足: {KpId}, 长度: {Length}", kp.KpId, snippetTexts?.Length ?? 0);
+                learningPack = CreateFallbackLearningPack(kp, snippets);
+                return learningPack;
+            }
+
             // 2. 调用 LLM 生成学习内容
             _logger.LogDebug("调用 LLM 生成学习内容");
             var content = await GenerateLearningContentAsync(kp, snippetTexts, cancellationToken);

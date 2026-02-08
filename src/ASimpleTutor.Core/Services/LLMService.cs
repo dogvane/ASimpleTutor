@@ -24,8 +24,10 @@ public class LLMService : ILLMService
     {
         _model = model;
         _logger = logger;
+
         // 判断是否是 Ollama 模型（根据 model 名称）
-        _isOllama = !string.IsNullOrEmpty(model) && model.Equals("ollama", StringComparison.OrdinalIgnoreCase);
+        _isOllama = "ollama".Equals(model, StringComparison.OrdinalIgnoreCase) || 
+                    "ollama".Equals(apiKey, StringComparison.OrdinalIgnoreCase);
 
         // 支持自定义 baseUrl（如 Ollama）
         if (!string.IsNullOrEmpty(baseUrl) && !baseUrl.StartsWith("https://api.openai.com/v1"))
@@ -77,8 +79,14 @@ public class LLMService : ILLMService
             if (!_isOllama)
             {
                 // 非 Ollama 模式，设置 30 秒超时
-                cts.CancelAfter(TimeSpan.FromSeconds(30));
-                _logger.LogDebug("非 Ollama 模式，设置 30 秒超时");
+                cts.CancelAfter(TimeSpan.FromSeconds(300));
+                _logger.LogDebug("非 Ollama 模式，设置 300秒(5分钟) 超时");
+            }
+            else
+            {
+                // Ollama 模式，设置 600 秒超时
+                cts.CancelAfter(TimeSpan.FromSeconds(600));
+                _logger.LogDebug("Ollama 模式，设置 600秒(10分钟)超时");
             }
             
             // 组合取消令牌
@@ -88,6 +96,8 @@ public class LLMService : ILLMService
 
             var content = response.Value.Content[0].Text;
             _logger.LogDebug("LLM 响应长度: {Length}", content?.Length ?? 0);
+            _logger.LogDebug("LLM 响应内容（前500字符）: {Content}", 
+                content?.Length > 500 ? content.Substring(0, 500) + "..." : content);
             return content ?? string.Empty;
         }
         catch (Exception ex)
