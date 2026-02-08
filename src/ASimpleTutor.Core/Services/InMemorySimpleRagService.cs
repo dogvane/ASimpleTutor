@@ -11,11 +11,9 @@ public class InMemorySimpleRagService : ISimpleRagService
     private readonly Dictionary<string, (string DocumentId, string Content, Dictionary<string, object> Metadata)> _chunks = new();
     private readonly Dictionary<string, List<string>> _docChunks = new();
     private readonly ILogger<InMemorySimpleRagService> _logger;
-    private readonly ISourceTracker _sourceTracker;
 
-    public InMemorySimpleRagService(ISourceTracker sourceTracker, ILogger<InMemorySimpleRagService> logger)
+    public InMemorySimpleRagService(ILogger<InMemorySimpleRagService> logger)
     {
-        _sourceTracker = sourceTracker;
         _logger = logger;
     }
 
@@ -35,9 +33,6 @@ public class InMemorySimpleRagService : ISimpleRagService
             enrichedMetadata["chunkIndex"] = chunkIndex;
 
             _chunks[chunkId] = (documentId, chunk, enrichedMetadata);
-
-            // 跟踪原文位置
-            _sourceTracker.TrackAsync(documentId, chunk, enrichedMetadata);
 
             results.Add(new ChunkResult
             {
@@ -123,7 +118,6 @@ public class InMemorySimpleRagService : ISimpleRagService
     {
         _chunks.Clear();
         _docChunks.Clear();
-        _sourceTracker.Clear();
         _logger.LogInformation("已清空 RAG 数据");
         return Task.CompletedTask;
     }

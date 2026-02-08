@@ -91,10 +91,7 @@ public class BooksController : ControllerBase
         try
         {
             var knowledgeBuilder = serviceProvider.GetRequiredService<IKnowledgeBuilder>();
-            var sourceTracker = serviceProvider.GetRequiredService<ISourceTracker>();
             var store = serviceProvider.GetRequiredService<KnowledgeSystemStore>();
-
-            sourceTracker.Clear();
 
             var (knowledgeSystem, documents) = await knowledgeBuilder.BuildAsync(
                 _config.ActiveBookRootId,

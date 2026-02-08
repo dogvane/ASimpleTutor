@@ -14,20 +14,17 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 {
     private readonly IScannerService _scannerService;
     private readonly ISimpleRagService _ragService;
-    private readonly ISourceTracker _sourceTracker;
     private readonly ILLMService _llmService;
     private readonly ILogger<KnowledgeBuilder> _logger;
 
     public KnowledgeBuilder(
         IScannerService scannerService,
         ISimpleRagService ragService,
-        ISourceTracker sourceTracker,
         ILLMService llmService,
         ILogger<KnowledgeBuilder> logger)
     {
         _scannerService = scannerService;
         _ragService = ragService;
-        _sourceTracker = sourceTracker;
         _llmService = llmService;
         _logger = logger;
     }
@@ -66,42 +63,22 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                     ["filePath"] = doc.Path,
                     ["title"] = doc.Title
                 });
-
-                // 同时跟踪原文片段
-                await _sourceTracker.TrackAsync(doc.DocId, content, new Dictionary<string, object>
-                {
-                    ["filePath"] = doc.Path,
-                    ["title"] = doc.Title
-                });
             }
 
             // 3. 调用 LLM 提取知识点
             _logger.LogInformation("调用 LLM 提取知识点");
-            var knowledgePoints = await ExtractKnowledgePointsAsync(documents, cancellationToken);
+            var (knowledgePoints, snippets) = await ExtractKnowledgePointsAsync(documents, cancellationToken);
             knowledgeSystem.KnowledgePoints = knowledgePoints;
+            knowledgeSystem.Snippets = snippets;
 
             // 4. 为每个知识点预生成学习内容
             _logger.LogInformation("为知识点预生成学习内容");
-            await GenerateLearningContentForPointsAsync(knowledgePoints, cancellationToken);
+            await GenerateLearningContentForPointsAsync(knowledgePoints, snippets, cancellationToken);
 
 
             // 6. 构建知识树
             _logger.LogInformation("构建知识树");
             knowledgeSystem.Tree = BuildKnowledgeTree(knowledgePoints);
-
-            // 7. 收集所有原文片段
-            _logger.LogInformation("收集原文片段");
-            foreach (var kp in knowledgePoints)
-            {
-                foreach (var snippetId in kp.SnippetIds)
-                {
-                    var snippet = _sourceTracker.GetSource(snippetId);
-                    if (snippet != null && !knowledgeSystem.Snippets.ContainsKey(snippetId))
-                    {
-                        knowledgeSystem.Snippets[snippetId] = snippet;
-                    }
-                }
-            }
 
             _logger.LogInformation("知识体系构建完成，共 {Count} 个知识点", knowledgePoints.Count);
         }
@@ -115,10 +92,12 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         return (knowledgeSystem, documents);
     }
 
-    private async Task<List<KnowledgePoint>> ExtractKnowledgePointsAsync(
+    private async Task<(List<KnowledgePoint> KnowledgePoints, Dictionary<string, SourceSnippet> Snippets)> ExtractKnowledgePointsAsync(
         List<Document> documents,
         CancellationToken cancellationToken)
     {
+        var snippets = new Dictionary<string, SourceSnippet>();
+
         // 为每个文档的每个 Section 创建唯一的 chunk ID
         var sectionChunkIds = new Dictionary<string, string>();
         var sectionContentMap = new Dictionary<string, string>();
@@ -146,7 +125,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
             }
         }
 
-        // 为每个 section 创建 SourceSnippet 并添加到 _sourceTracker
+        // 为每个 section 创建 SourceSnippet 并添加到 snippets 字典
         foreach (var sectionId in sectionChunkIds.Keys)
         {
             var docId = sectionDocMap[sectionId];
@@ -172,14 +151,8 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                     ChunkId = sectionId
                 };
 
-                // 添加到 _sourceTracker
-                await _sourceTracker.TrackAsync(sectionId, sectionContent, new Dictionary<string, object>
-                {
-                    ["filePath"] = doc.Path,
-                    ["title"] = string.Join(" > ", sectionPath),
-                    ["startLine"] = startLine,
-                    ["endLine"] = endLine
-                });
+                // 添加到 snippets 字典
+                snippets[sectionId] = snippet;
             }
         }
 
@@ -345,15 +318,15 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                     })
                     .ToList();
 
-                return kpList;
+                return (kpList, snippets);
             }
 
-            return new List<KnowledgePoint>();
+            return (new List<KnowledgePoint>(), snippets);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "调用 LLM 提取知识点失败");
-            return new List<KnowledgePoint>();
+            return (new List<KnowledgePoint>(), snippets);
         }
     }
 
@@ -543,7 +516,10 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         return validTypes.Contains(type.ToLowerInvariant());
     }
 
-    private async Task GenerateLearningContentForPointsAsync(List<KnowledgePoint> knowledgePoints, CancellationToken cancellationToken)
+    private async Task GenerateLearningContentForPointsAsync(
+        List<KnowledgePoint> knowledgePoints,
+        Dictionary<string, SourceSnippet> snippets,
+        CancellationToken cancellationToken)
     {
         _logger.LogInformation("开始为 {Count} 个知识点生成学习内容", knowledgePoints.Count);
 
@@ -554,8 +530,12 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 _logger.LogInformation("生成学习内容: {KpId}", kp.KpId);
 
                 // 获取原文片段
-                var snippets = _sourceTracker.GetSources(kp.SnippetIds);
-                var snippetTexts = string.Join("\n\n", snippets.Select(s => s.Content));
+                var kpSnippets = kp.SnippetIds
+                    .Select(id => snippets.TryGetValue(id, out var snippet) ? snippet : null)
+                    .Where(s => s != null)
+                    .Cast<SourceSnippet>()
+                    .ToList();
+                var snippetTexts = string.Join("\n\n", kpSnippets.Select(s => s.Content));
 
                 // 检查 snippetTexts 是否为空或长度小于 100
                 if (string.IsNullOrEmpty(snippetTexts) || snippetTexts.Length < 100)

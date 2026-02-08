@@ -38,7 +38,6 @@ builder.Services.Configure<ASimpleTutor.Core.Configuration.SectioningOptions>(
 
 // 注册 Core 服务
 builder.Services.AddSingleton<IScannerService, MarkdownScanner>();
-builder.Services.AddSingleton<ISourceTracker, SourceTracker>();
 builder.Services.AddSingleton<KnowledgeSystemStore>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<KnowledgeSystemStore>>();
@@ -58,8 +57,7 @@ builder.Services.AddSingleton<ILLMService>(sp =>
 builder.Services.AddSingleton<ISimpleRagService>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<InMemorySimpleRagService>>();
-    var sourceTracker = sp.GetRequiredService<ISourceTracker>();
-    return new InMemorySimpleRagService(sourceTracker, logger);
+    return new InMemorySimpleRagService(logger);
 });
 builder.Services.AddSingleton<IKnowledgeBuilder, KnowledgeBuilder>();
 builder.Services.AddSingleton<ILearningGenerator, LearningGenerator>();

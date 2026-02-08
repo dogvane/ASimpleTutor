@@ -11,18 +11,18 @@ namespace ASimpleTutor.Core.Services;
 public class LearningGenerator : ILearningGenerator
 {
     private readonly ISimpleRagService _ragService;
-    private readonly ISourceTracker _sourceTracker;
+    private readonly KnowledgeSystemStore _knowledgeSystemStore;
     private readonly ILLMService _llmService;
     private readonly ILogger<LearningGenerator> _logger;
 
     public LearningGenerator(
         ISimpleRagService ragService,
-        ISourceTracker sourceTracker,
+        KnowledgeSystemStore knowledgeSystemStore,
         ILLMService llmService,
         ILogger<LearningGenerator> logger)
     {
         _ragService = ragService;
-        _sourceTracker = sourceTracker;
+        _knowledgeSystemStore = knowledgeSystemStore;
         _llmService = llmService;
         _logger = logger;
     }
@@ -37,10 +37,25 @@ public class LearningGenerator : ILearningGenerator
             SnippetIds = new List<string>(kp.SnippetIds)
         };
 
+        List<SourceSnippet> snippets = new();
+
         try
         {
-            // 1. 获取原文片段
-            var snippets = _sourceTracker.GetSources(kp.SnippetIds);
+            // 1. 从 KnowledgeSystemStore 获取原文片段
+            var bookRootId = kp.BookRootId;
+            if (!string.IsNullOrEmpty(bookRootId))
+            {
+                var loadResult = await _knowledgeSystemStore.LoadAsync(bookRootId, cancellationToken);
+                if (loadResult.KnowledgeSystem != null)
+                {
+                    snippets = kp.SnippetIds
+                        .Select(id => loadResult.KnowledgeSystem.Snippets.TryGetValue(id, out var snippet) ? snippet : null)
+                        .Where(s => s != null)
+                        .Cast<SourceSnippet>()
+                        .ToList();
+                }
+            }
+
             var snippetTexts = string.Join("\n\n", snippets.Select(s => s.Content));
 
             // 检查 snippetTexts 是否为空或长度小于 100
@@ -78,7 +93,7 @@ public class LearningGenerator : ILearningGenerator
         catch (Exception ex)
         {
             _logger.LogError(ex, "学习内容生成失败: {KpId}", kp.KpId);
-            learningPack = CreateFallbackLearningPack(kp, _sourceTracker.GetSources(kp.SnippetIds));
+            learningPack = CreateFallbackLearningPack(kp, snippets);
         }
 
         return learningPack;

@@ -79,12 +79,14 @@ public class KnowledgePointsController : ControllerBase
             return NotFound(new { error = new { code = "KP_NOT_FOUND", message = $"知识点不存在: {kpId}" } });
         }
 
-        var sourceTracker = serviceProvider.GetRequiredService<ISourceTracker>();
-        var snippets = sourceTracker.GetSources(kp.SnippetIds);
+        var snippets = kp.SnippetIds
+            .Select(id => _knowledgeSystem.Snippets.TryGetValue(id, out var snippet) ? snippet : null)
+            .Where(s => s != null)
+            .ToList();
 
         var sourceItems = snippets.Select(s => new
         {
-            filePath = s.FilePath,
+            filePath = s!.FilePath,
             fileName = Path.GetFileName(s.FilePath),
             headingPath = s.HeadingPath,
             lineStart = s.StartLine,

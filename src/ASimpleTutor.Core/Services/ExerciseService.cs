@@ -11,7 +11,6 @@ namespace ASimpleTutor.Core.Services;
 public class ExerciseService : IExerciseGenerator, IExerciseFeedback
 {
     private readonly ISimpleRagService _ragService;
-    private readonly ISourceTracker _sourceTracker;
     private readonly ILLMService _llmService;
     private readonly KnowledgeSystemStore _knowledgeSystemStore;
     private readonly ILogger<ExerciseService> _logger;
@@ -22,13 +21,11 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
 
     public ExerciseService(
         ISimpleRagService ragService,
-        ISourceTracker sourceTracker,
         ILLMService llmService,
         KnowledgeSystemStore knowledgeSystemStore,
         ILogger<ExerciseService> logger)
     {
         _ragService = ragService;
-        _sourceTracker = sourceTracker;
         _llmService = llmService;
         _knowledgeSystemStore = knowledgeSystemStore;
         _logger = logger;
@@ -40,55 +37,40 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
 
         try
         {
-            var snippets = _sourceTracker.GetSources(kp.SnippetIds);
-            var snippetTexts = string.Join("\n\n", snippets.Select(s => s.Content));
+            string snippetTexts = string.Empty;
 
-            // 如果从 SourceTracker 中获取不到原文片段，尝试从 KnowledgeSystemStore 中加载
-            if (string.IsNullOrEmpty(snippetTexts) || snippetTexts.Length < 100)
+            // 从 KnowledgeSystemStore 中加载原文片段
+            var bookRootId = kp.BookRootId;
+            if (!string.IsNullOrEmpty(bookRootId))
             {
-                _logger.LogInformation("尝试从 KnowledgeSystemStore 加载原文片段: {KpId}, SnippetIds: [{SnippetIds}]", 
-                    kp.KpId, string.Join(", ", kp.SnippetIds));
-                
-                // 从 KnowledgePoint 中获取 BookRootId
-                var bookRootId = kp.BookRootId;
-                if (!string.IsNullOrEmpty(bookRootId))
+                // 从存储中加载知识系统
+                var loadResult = await _knowledgeSystemStore.LoadAsync(bookRootId, cancellationToken);
+                if (loadResult.KnowledgeSystem != null)
                 {
-                    // 从存储中加载知识系统
-                    var loadResult = await _knowledgeSystemStore.LoadAsync(bookRootId, cancellationToken);
-                    if (loadResult.KnowledgeSystem != null)
+                    _logger.LogInformation("从 KnowledgeSystemStore 加载知识系统成功: {BookRootId}, 知识点数量: {KpCount}, 原文片段数量: {SnippetCount}", 
+                        bookRootId, loadResult.KnowledgeSystem.KnowledgePoints.Count, loadResult.KnowledgeSystem.Snippets.Count);
+                    
+                    // 尝试从知识系统的 Snippets 中获取原文片段
+                    var knowledgeSystemSnippets = kp.SnippetIds
+                        .Select(id => loadResult.KnowledgeSystem.Snippets.TryGetValue(id, out var snippet) ? snippet : null)
+                        .Where(s => s != null)
+                        .ToList();
+                    
+                    if (knowledgeSystemSnippets.Count > 0)
                     {
-                        _logger.LogInformation("从 KnowledgeSystemStore 加载知识系统成功: {BookRootId}, 知识点数量: {KpCount}, 原文片段数量: {SnippetCount}", 
-                            bookRootId, loadResult.KnowledgeSystem.KnowledgePoints.Count, loadResult.KnowledgeSystem.Snippets.Count);
-                        
-                        // 记录知识系统中存储的原文片段 ID
-                        if (loadResult.KnowledgeSystem.Snippets.Count > 0)
+                        snippetTexts = string.Join("\n\n", knowledgeSystemSnippets.Select(s => s!.Content));
+                        _logger.LogInformation("从 KnowledgeSystemStore 成功加载原文片段: {KpId}, 数量: {Count}, 长度: {Length}", 
+                            kp.KpId, knowledgeSystemSnippets.Count, snippetTexts.Length);
+                    }
+                    else
+                    {
+                        // 如果找不到匹配的原文片段，尝试使用知识系统中的第一个原文片段
+                        var firstSnippet = loadResult.KnowledgeSystem.Snippets.Values.FirstOrDefault();
+                        if (firstSnippet != null)
                         {
-                            var snippetIdsInStore = string.Join(", ", loadResult.KnowledgeSystem.Snippets.Keys);
-                            _logger.LogInformation("知识系统中存储的原文片段 ID: [{SnippetIdsInStore}]", snippetIdsInStore);
-                            
-                            // 尝试从知识系统的 Snippets 中获取原文片段
-                            var knowledgeSystemSnippets = kp.SnippetIds
-                                .Select(id => loadResult.KnowledgeSystem.Snippets.TryGetValue(id, out var snippet) ? snippet : null)
-                                .Where(s => s != null)
-                                .ToList();
-                            
-                            if (knowledgeSystemSnippets.Count > 0)
-                            {
-                                snippetTexts = string.Join("\n\n", knowledgeSystemSnippets.Select(s => s.Content));
-                                _logger.LogInformation("从 KnowledgeSystemStore 成功加载原文片段: {KpId}, 数量: {Count}, 长度: {Length}", 
-                                    kp.KpId, knowledgeSystemSnippets.Count, snippetTexts.Length);
-                            }
-                            else
-                            {
-                                // 如果找不到匹配的原文片段，尝试使用知识系统中的第一个原文片段
-                                var firstSnippet = loadResult.KnowledgeSystem.Snippets.Values.FirstOrDefault();
-                                if (firstSnippet != null)
-                                {
-                                    snippetTexts = firstSnippet.Content;
-                                    _logger.LogInformation("使用知识系统中的第一个原文片段: {SnippetId}, 长度: {Length}", 
-                                        firstSnippet.SnippetId, snippetTexts.Length);
-                                }
-                            }
+                            snippetTexts = firstSnippet.Content;
+                            _logger.LogInformation("使用知识系统中的第一个原文片段: {SnippetId}, 长度: {Length}", 
+                                firstSnippet.SnippetId, snippetTexts.Length);
                         }
                     }
                 }

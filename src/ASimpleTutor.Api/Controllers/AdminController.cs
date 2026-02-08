@@ -62,9 +62,6 @@ public class AdminController : ControllerBase
         try
         {
             var knowledgeBuilder = serviceProvider.GetRequiredService<IKnowledgeBuilder>();
-            var sourceTracker = serviceProvider.GetRequiredService<ISourceTracker>();
-
-            sourceTracker.Clear();
 
             var (knowledgeSystem, documents) = await knowledgeBuilder.BuildAsync(
                 config.ActiveBookRootId,
