@@ -272,42 +272,7 @@ public class ProgressController : ControllerBase
         return BadRequest(new { error = new { code = "BAD_REQUEST", message = "无效的请求" } });
     }
 
-    /// <summary>
-    /// 获取关联知识点
-    /// </summary>
-    [HttpGet("relations")]
-    public IActionResult GetRelations([FromQuery] string kpId)
-    {
-        if (_knowledgeSystem == null)
-        {
-            return NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
-        }
 
-        if (string.IsNullOrEmpty(kpId))
-        {
-            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "kpId 不能为空" } });
-        }
-
-        var kp = _knowledgeSystem.KnowledgePoints.FirstOrDefault(p => p.KpId == kpId);
-        if (kp == null)
-        {
-            return NotFound(new { error = new { code = "KP_NOT_FOUND", message = $"知识点不存在: {kpId}" } });
-        }
-
-        var relations = kp.Relations.Select(r =>
-        {
-            var targetKp = _knowledgeSystem.KnowledgePoints.FirstOrDefault(k => k.KpId == r.ToKpId);
-            return new
-            {
-                targetKpId = r.ToKpId,
-                targetTitle = targetKp?.Title ?? "未知",
-                relationType = r.Type,
-                description = r.Description
-            };
-        }).ToList();
-
-        return Ok(new { kpId, relations });
-    }
 }
 
 /// <summary>

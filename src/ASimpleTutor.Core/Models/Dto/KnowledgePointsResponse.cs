@@ -80,26 +80,4 @@ public class KnowledgePointDto
     }
 }
 
-/// <summary>
-/// 关联关系响应 DTO
-/// </summary>
-public class RelationsResponse
-{
-    [JsonProperty("relations")]
-    public List<KnowledgeRelationDto> Relations { get; set; } = new();
-}
 
-/// <summary>
-/// 关联关系 DTO
-/// </summary>
-public class KnowledgeRelationDto
-{
-    [JsonProperty("target_title")]
-    public string TargetTitle { get; set; } = string.Empty;
-
-    [JsonProperty("relation_type")]
-    public string Type { get; set; } = string.Empty;
-
-    [JsonProperty("description")]
-    public string? Description { get; set; }
-}

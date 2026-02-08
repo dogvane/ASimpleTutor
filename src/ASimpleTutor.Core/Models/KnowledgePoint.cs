@@ -64,10 +64,7 @@ public class KnowledgePoint
     /// </summary>
     public List<SlideCard> SlideCards { get; set; } = new();
 
-    /// <summary>
-    /// 与其他知识点的关联关系
-    /// </summary>
-    public List<KnowledgeRelation> Relations { get; set; } = new();
+    
 
     /// <summary>
     /// 来源文档 ID
@@ -117,59 +114,7 @@ public enum KpType
     BestPractice
 }
 
-/// <summary>
-/// 知识点关联关系
-/// </summary>
-public class KnowledgeRelation
-{
-    /// <summary>
-    /// 关联的目标知识点 ID
-    /// </summary>
-    public string ToKpId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// 关联类型
-    /// </summary>
-    [JsonConverter(typeof(StringEnumConverter))]
-    public RelationType Type { get; set; }
-
-    /// <summary>
-    /// 关系描述（可选）
-    /// </summary>
-    public string? Description { get; set; }
-}
-
-/// <summary>
-/// 知识点关联类型
-/// </summary>
-[JsonConverter(typeof(StringEnumConverter))]
-public enum RelationType
-{
-    /// <summary>
-    /// 前置依赖（学习当前知识点前应先掌握）
-    /// </summary>
-    Prerequisite,
-
-    /// <summary>
-    /// 对比关系（与关联知识点进行对比学习）
-    /// </summary>
-    Contrast,
-
-    /// <summary>
-    /// 包含/组成（关联知识点是当前知识点的组成部分）
-    /// </summary>
-    Contains,
-
-    /// <summary>
-    /// 一般关联（存在某种关联关系）
-    /// </summary>
-    Related,
-
-    /// <summary>
-    /// 相似关系
-    /// </summary>
-    Similar
-}
 
 /// <summary>
 /// 幻灯片卡片（用于幻灯片教学模式）

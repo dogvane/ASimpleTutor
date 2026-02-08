@@ -30,7 +30,7 @@ public class KnowledgeSystemStore
     /// <summary>
     /// 异步保存知识系统到文件
     /// </summary>
-    public async Task SaveAsync(KnowledgeSystem knowledgeSystem, CancellationToken cancellationToken = default)
+    public async Task SaveAsync(KnowledgeSystem knowledgeSystem, List<Document>? documents = null, CancellationToken cancellationToken = default)
     {
         if (knowledgeSystem == null)
         {
@@ -45,16 +45,18 @@ public class KnowledgeSystemStore
 
         try
         {
-            // 并行保存知识体系和原文片段
+            // 并行保存知识体系、原文片段和文档章节信息
             var saveKnowledgeTask = SaveKnowledgeSystemAsync(knowledgeSystem, directory, cancellationToken);
             var saveSnippetsTask = SaveSnippetsAsync(knowledgeSystem.Snippets, directory, cancellationToken);
+            var saveDocumentsTask = SaveDocumentsAsync(documents, knowledgeSystem.BookRootId, directory, cancellationToken);
 
-            await Task.WhenAll(saveKnowledgeTask, saveSnippetsTask);
+            await Task.WhenAll(saveKnowledgeTask, saveSnippetsTask, saveDocumentsTask);
 
-            _logger.LogInformation("知识系统保存完成: {BookRootId}, 知识点: {KpCount}, 原文片段: {SnippetCount}",
+            _logger.LogInformation("知识系统保存完成: {BookRootId}, 知识点: {KpCount}, 原文片段: {SnippetCount}, 文档: {DocCount}",
                 knowledgeSystem.BookRootId,
                 knowledgeSystem.KnowledgePoints.Count,
-                knowledgeSystem.Snippets.Count);
+                knowledgeSystem.Snippets.Count,
+                documents?.Count ?? 0);
         }
         catch (Exception ex)
         {
@@ -66,33 +68,35 @@ public class KnowledgeSystemStore
     /// <summary>
     /// 异步从文件加载知识系统
     /// </summary>
-    public async Task<KnowledgeSystem?> LoadAsync(string bookRootId, CancellationToken cancellationToken = default)
+    public async Task<(KnowledgeSystem? KnowledgeSystem, List<Document>? Documents)> LoadAsync(string bookRootId, CancellationToken cancellationToken = default)
     {
         var directory = Path.Combine(_storePath, bookRootId);
 
         if (!Directory.Exists(directory))
         {
             _logger.LogInformation("知识系统保存目录不存在: {Directory}", directory);
-            return null;
+            return (null, null);
         }
 
         _logger.LogInformation("开始加载知识系统: {BookRootId}", bookRootId);
 
         try
         {
-            // 并行加载知识体系和原文片段
+            // 并行加载知识体系、原文片段和文档章节信息
             var loadKnowledgeTask = LoadKnowledgeSystemAsync(directory, cancellationToken);
             var loadSnippetsTask = LoadSnippetsAsync(directory, cancellationToken);
+            var loadDocumentsTask = LoadDocumentsAsync(directory, cancellationToken);
 
-            await Task.WhenAll(loadKnowledgeTask, loadSnippetsTask);
+            await Task.WhenAll(loadKnowledgeTask, loadSnippetsTask, loadDocumentsTask);
 
             var knowledgeSystem = loadKnowledgeTask.Result;
             var snippets = loadSnippetsTask.Result;
+            var documents = loadDocumentsTask.Result;
 
             if (knowledgeSystem == null)
             {
                 _logger.LogWarning("知识系统文件加载失败: {BookRootId}", bookRootId);
-                return null;
+                return (null, documents);
             }
 
             // 合并原文片段
@@ -101,26 +105,30 @@ public class KnowledgeSystemStore
                 knowledgeSystem.Snippets = snippets;
             }
 
-            _logger.LogInformation("知识系统加载完成: {BookRootId}, 知识点: {KpCount}, 原文片段: {SnippetCount}",
+            // 重建知识树
+            knowledgeSystem.Tree = ASimpleTutor.Core.Services.KnowledgeBuilder.BuildKnowledgeTree(knowledgeSystem.KnowledgePoints);
+
+            _logger.LogInformation("知识系统加载完成: {BookRootId}, 知识点: {KpCount}, 原文片段: {SnippetCount}, 文档: {DocCount}",
                 bookRootId,
                 knowledgeSystem.KnowledgePoints.Count,
-                knowledgeSystem.Snippets.Count);
+                knowledgeSystem.Snippets.Count,
+                documents?.Count ?? 0);
 
-            return knowledgeSystem;
+            return (knowledgeSystem, documents);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "加载知识系统失败: {BookRootId}", bookRootId);
-            return null;
+            return (null, null);
         }
     }
 
     /// <summary>
     /// 保存知识系统到文件（同步方法，保持向后兼容）
     /// </summary>
-    public void Save(KnowledgeSystem knowledgeSystem)
+    public void Save(KnowledgeSystem knowledgeSystem, List<Document>? documents = null)
     {
-        SaveAsync(knowledgeSystem).GetAwaiter().GetResult();
+        SaveAsync(knowledgeSystem, documents).GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -128,7 +136,17 @@ public class KnowledgeSystemStore
     /// </summary>
     public KnowledgeSystem? Load(string bookRootId)
     {
-        return LoadAsync(bookRootId).GetAwaiter().GetResult();
+        var result = LoadAsync(bookRootId).GetAwaiter().GetResult();
+        return result.KnowledgeSystem;
+    }
+
+    /// <summary>
+    /// 从文件加载文档章节信息（同步方法）
+    /// </summary>
+    public List<Document>? LoadDocuments(string bookRootId)
+    {
+        var result = LoadAsync(bookRootId).GetAwaiter().GetResult();
+        return result.Documents;
     }
 
     /// <summary>
@@ -138,7 +156,28 @@ public class KnowledgeSystemStore
     {
         var directory = Path.Combine(_storePath, bookRootId);
         var knowledgeFile = Path.Combine(directory, "knowledge-system.json");
-        return File.Exists(knowledgeFile);
+        var documentsFile = Path.Combine(directory, "documents.json");
+        return File.Exists(knowledgeFile) && File.Exists(documentsFile);
+    }
+
+    /// <summary>
+    /// 检查存储文件的完整性
+    /// </summary>
+    public bool CheckStorageIntegrity(string bookRootId)
+    {
+        var directory = Path.Combine(_storePath, bookRootId);
+        
+        if (!Directory.Exists(directory))
+        {
+            return false;
+        }
+
+        var knowledgeFile = Path.Combine(directory, "knowledge-system.json");
+        var documentsFile = Path.Combine(directory, "documents.json");
+        var snippetsFile = Path.Combine(directory, "snippets.json");
+
+        // 检查核心文件是否存在
+        return File.Exists(knowledgeFile) && File.Exists(documentsFile);
     }
 
     /// <summary>
@@ -247,6 +286,39 @@ public class KnowledgeSystemStore
 
         return saveModel?.Snippets ?? new Dictionary<string, SourceSnippet>();
     }
+
+    private async Task SaveDocumentsAsync(List<Document>? documents, string bookRootId, string directory, CancellationToken cancellationToken)
+    {
+        if (documents == null || documents.Count == 0)
+        {
+            return;
+        }
+
+        var saveModel = new DocumentsSaveModel
+        {
+            BookRootId = bookRootId,
+            Documents = documents
+        };
+
+        var filePath = Path.Combine(directory, "documents.json");
+        var json = JsonConvert.SerializeObject(saveModel, Formatting.Indented);
+        await File.WriteAllTextAsync(filePath, json, cancellationToken);
+    }
+
+    private async Task<List<Document>?> LoadDocumentsAsync(string directory, CancellationToken cancellationToken)
+    {
+        var filePath = Path.Combine(directory, "documents.json");
+
+        if (!File.Exists(filePath))
+        {
+            return new List<Document>();
+        }
+
+        var json = await File.ReadAllTextAsync(filePath, cancellationToken);
+        var saveModel = JsonConvert.DeserializeObject<DocumentsSaveModel>(json);
+
+        return saveModel?.Documents ?? new List<Document>();
+    }
 }
 
 /// <summary>
@@ -271,4 +343,19 @@ internal class SnippetsSaveModel
 {
     [JsonProperty("snippets")]
     public Dictionary<string, SourceSnippet> Snippets { get; set; } = new();
+}
+
+/// <summary>
+/// 文档章节信息保存模型
+/// </summary>
+internal class DocumentsSaveModel
+{
+    [JsonProperty("book_root_id")]
+    public string BookRootId { get; set; } = string.Empty;
+
+    [JsonProperty("documents")]
+    public List<Document> Documents { get; set; } = new();
+
+    [JsonProperty("saved_at")]
+    public DateTime SavedAt { get; set; } = DateTime.UtcNow;
 }

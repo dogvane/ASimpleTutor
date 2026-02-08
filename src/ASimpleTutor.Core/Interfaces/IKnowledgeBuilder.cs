@@ -13,6 +13,6 @@ public interface IKnowledgeBuilder
     /// <param name="bookRootId">书籍目录ID</param>
     /// <param name="rootPath">书籍目录路径</param>
     /// <param name="cancellationToken">取消令牌</param>
-    /// <returns>知识系统</returns>
-    Task<KnowledgeSystem> BuildAsync(string bookRootId, string rootPath, CancellationToken cancellationToken = default);
+    /// <returns>知识系统和文档信息</returns>
+    Task<(KnowledgeSystem KnowledgeSystem, List<Document> Documents)> BuildAsync(string bookRootId, string rootPath, CancellationToken cancellationToken = default);
 }

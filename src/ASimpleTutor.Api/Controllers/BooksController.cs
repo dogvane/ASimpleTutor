@@ -96,12 +96,12 @@ public class BooksController : ControllerBase
 
             sourceTracker.Clear();
 
-            var knowledgeSystem = await knowledgeBuilder.BuildAsync(
+            var (knowledgeSystem, documents) = await knowledgeBuilder.BuildAsync(
                 _config.ActiveBookRootId,
                 bookRoot.Path);
 
             // 保存到持久化存储
-            await store.SaveAsync(knowledgeSystem);
+            await store.SaveAsync(knowledgeSystem, documents);
 
             AdminController.SetKnowledgeSystem(knowledgeSystem);
             KnowledgePointsController.SetKnowledgeSystem(knowledgeSystem);

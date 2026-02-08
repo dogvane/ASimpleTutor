@@ -2,6 +2,7 @@ using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
 using ASimpleTutor.Core.Models.Dto;
 using Microsoft.Extensions.Logging;
+using System;
 using System.IO;
 
 namespace ASimpleTutor.Core.Services;
@@ -31,7 +32,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         _logger = logger;
     }
 
-    public async Task<KnowledgeSystem> BuildAsync(string bookRootId, string rootPath, CancellationToken cancellationToken = default)
+    public async Task<(KnowledgeSystem KnowledgeSystem, List<Document> Documents)> BuildAsync(string bookRootId, string rootPath, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("开始构建知识体系: {BookRootId}", bookRootId);
 
@@ -51,7 +52,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
             if (documents.Count == 0)
             {
                 _logger.LogWarning("未找到任何 Markdown 文档");
-                return knowledgeSystem;
+                return (knowledgeSystem, documents);
             }
 
             // 2. 插入 RAG 并跟踪原文
@@ -83,9 +84,6 @@ public class KnowledgeBuilder : IKnowledgeBuilder
             _logger.LogInformation("为知识点预生成学习内容");
             await GenerateLearningContentForPointsAsync(knowledgePoints, cancellationToken);
 
-            // 5. 构建知识点关联关系
-            _logger.LogInformation("构建知识点关联关系");
-            await BuildKnowledgeRelationsAsync(knowledgePoints, cancellationToken);
 
             // 6. 构建知识树
             _logger.LogInformation("构建知识树");
@@ -114,7 +112,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
             knowledgeSystem = CreateFallbackKnowledgeSystem(bookRootId, documents);
         }
 
-        return knowledgeSystem;
+        return (knowledgeSystem, documents);
     }
 
     private async Task<List<KnowledgePoint>> ExtractKnowledgePointsAsync(
@@ -126,6 +124,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         var sectionContentMap = new Dictionary<string, string>();
         var sectionDocMap = new Dictionary<string, string>(); // 记录 section chunk ID 对应的文档 ID
         var sectionPathMap = new Dictionary<string, List<string>>(); // 记录 section chunk ID 对应的章节路径
+        var sectionLineRangeMap = new Dictionary<string, (int startLine, int endLine)>(); // 记录 section chunk ID 对应的行号范围
 
         // 构建 section chunk ID 和内容映射
         foreach (var doc in documents)
@@ -133,7 +132,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
             if (doc.Sections != null && doc.Sections.Count > 0)
             {
                 // 使用深度优先搜索遍历所有层级的章节
-                TraverseSectionsAsync(doc, doc.Sections, sectionChunkIds, sectionContentMap, sectionDocMap, sectionPathMap);
+                TraverseSectionsAsync(doc, doc.Sections, sectionChunkIds, sectionContentMap, sectionDocMap, sectionPathMap, sectionLineRangeMap);
             }
             else
             {
@@ -143,6 +142,44 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 sectionDocMap[docId] = doc.DocId;
                 sectionPathMap[docId] = new List<string> { doc.Title };
                 sectionContentMap[docId] = ReconstructDocumentContent(doc);
+                sectionLineRangeMap[docId] = (0, 0);
+            }
+        }
+
+        // 为每个 section 创建 SourceSnippet 并添加到 _sourceTracker
+        foreach (var sectionId in sectionChunkIds.Keys)
+        {
+            var docId = sectionDocMap[sectionId];
+            var sectionPath = sectionPathMap[sectionId];
+            var sectionContent = sectionContentMap[sectionId];
+            var (startLine, endLine) = sectionLineRangeMap[sectionId];
+
+            // 查找对应的文档
+            var doc = documents.FirstOrDefault(d => d.DocId == docId);
+            if (doc != null)
+            {
+                // 创建 SourceSnippet
+                var snippet = new SourceSnippet
+                {
+                    SnippetId = sectionId,
+                    BookRootId = doc.BookRootId,
+                    DocId = docId,
+                    FilePath = doc.Path,
+                    HeadingPath = sectionPath,
+                    Content = sectionContent,
+                    StartLine = startLine,
+                    EndLine = endLine,
+                    ChunkId = sectionId
+                };
+
+                // 添加到 _sourceTracker
+                await _sourceTracker.TrackAsync(sectionId, sectionContent, new Dictionary<string, object>
+                {
+                    ["filePath"] = doc.Path,
+                    ["title"] = string.Join(" > ", sectionPath),
+                    ["startLine"] = startLine,
+                    ["endLine"] = endLine
+                });
             }
         }
 
@@ -172,10 +209,10 @@ public class KnowledgeBuilder : IKnowledgeBuilder
       ""kp_id"": ""唯一的知识点ID"",
       ""title"": ""知识点标题"",
       ""type"": ""concept|chapter|process|api|bestPractice"",
-      ""aliases"": [""别名1"", ""别名2""],
-      ""chapter_path"": [""章节1"", ""章节2"", ""章节3""],
+      ""aliases"": [""别名1"", ""别名2""] ,
+      ""chapter_path"": [""章节1"", ""章节2"", ""章节3""] ,
       ""importance"": 0.0-1.0,
-      ""snippet_ids"": [""chunk_id1"", ""chunk_id2""],
+      ""snippet_ids"": [""chunk_id1"", ""chunk_id2""] ,
       ""summary"": ""一句话总结（必须填写）"",
       ""doc_id"": ""来源文档ID""
     }
@@ -506,119 +543,6 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         return validTypes.Contains(type.ToLowerInvariant());
     }
 
-    private async Task BuildKnowledgeRelationsAsync(
-        List<KnowledgePoint> knowledgePoints,
-        CancellationToken cancellationToken)
-    {
-        if (knowledgePoints.Count < 2)
-        {
-            _logger.LogInformation("知识点数量不足，跳过关联关系构建");
-            return;
-        }
-
-        _logger.LogInformation("开始构建 {Count} 个知识点的关联关系", knowledgePoints.Count);
-
-        try
-        {
-            // 构建知识点索引（标题 -> 知识点）
-            var kpIndex = knowledgePoints.ToDictionary(kp => kp.Title.ToLowerInvariant(), kp => kp);
-
-            // 为每个知识点分析关联关系
-            foreach (var kp in knowledgePoints)
-            {
-                if (kp.Summary == null || string.IsNullOrEmpty(kp.Summary.Definition))
-                {
-                    continue;
-                }
-
-                // 使用 LLM 分析可能的关联关系
-                var relations = await FindRelationsForKnowledgePointAsync(kp, knowledgePoints, cancellationToken);
-
-                foreach (var relation in relations)
-                {
-                    if (kpIndex.TryGetValue(relation.TargetTitle.ToLowerInvariant(), out var targetKp))
-                    {
-                        // 解析关系类型
-                        if (!Enum.TryParse<RelationType>(relation.Type, ignoreCase: true, out var relationType))
-                        {
-                            continue; // 无效的关系类型
-                        }
-
-                        // 检查是否已存在相同关系
-                        if (!kp.Relations.Any(r => r.ToKpId == targetKp.KpId && r.Type == relationType))
-                        {
-                            kp.Relations.Add(new KnowledgeRelation
-                            {
-                                ToKpId = targetKp.KpId,
-                                Type = relationType,
-                                Description = relation.Description
-                            });
-                        }
-                    }
-                }
-            }
-
-            _logger.LogInformation("关联关系构建完成");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "构建关联关系时发生错误");
-        }
-    }
-
-    private async Task<List<KnowledgeRelationDto>> FindRelationsForKnowledgePointAsync(
-        KnowledgePoint kp,
-        List<KnowledgePoint> allPoints,
-        CancellationToken cancellationToken)
-    {
-        var systemPrompt = @"你是一个知识图谱专家。请分析当前知识点与其他知识点之间的关联关系。
-
-请以 JSON 格式输出：
-{
-  ""relations"": [
-    {
-      ""target_title"": ""关联目标的知识点的完整标题"",
-      ""relation_type"": ""prerequisite|contrast|contains|related|similar"",
-      ""description"": ""关系描述""
-    }
-  ]
-}
-
-关系类型说明：
-- prerequisite: 前置依赖（学习当前知识点前应先掌握）
-- contrast: 对比关系（与关联知识点进行对比学习）
-- contains: 包含/组成（关联知识点是当前知识点的组成部分）
-- related: 一般关联（存在某种关联关系）
-- similar: 相似关系（两者相似但有区别）
-
-注意：
-1. 只返回确实存在关联关系的知识点
-2. target_title 必须与提供的知识点标题完全匹配
-3. 最多返回 5 个最重要的关联关系
-4. 如果没有明显关联，返回空数组";
-
-        var allTitles = string.Join("\n", allPoints.Select(p => $"- {p.Title}"));
-        var userMessage = $"当前知识点：{kp.Title}\n" +
-                          $"定义：{kp.Summary?.Definition ?? "无"}\n" +
-                          $"要点：{string.Join(", ", kp.Summary?.KeyPoints ?? new())}\n\n" +
-                          $"所有知识点：\n{allTitles}";
-
-        try
-        {
-            var response = await _llmService.ChatJsonAsync<RelationsResponse>(
-                systemPrompt,
-                userMessage,
-                cancellationToken);
-
-            return response?.Relations ?? new List<KnowledgeRelationDto>();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "查找关联关系失败: {KpId}", kp.KpId);
-            return new List<KnowledgeRelationDto>();
-        }
-    }
-
     private async Task GenerateLearningContentForPointsAsync(List<KnowledgePoint> knowledgePoints, CancellationToken cancellationToken)
     {
         _logger.LogInformation("开始为 {Count} 个知识点生成学习内容", knowledgePoints.Count);
@@ -703,14 +627,15 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         Dictionary<string, string> sectionChunkIds,
         Dictionary<string, string> sectionContentMap,
         Dictionary<string, string> sectionDocMap,
-        Dictionary<string, List<string>> sectionPathMap)
+        Dictionary<string, List<string>> sectionPathMap,
+        Dictionary<string, (int startLine, int endLine)> sectionLineRangeMap)
     {
         foreach (var section in sections)
         {
             // 递归处理子章节
             if (section.SubSections != null && section.SubSections.Count > 0)
             {
-                TraverseSectionsAsync(doc, section.SubSections, sectionChunkIds, sectionContentMap, sectionDocMap, sectionPathMap);
+                TraverseSectionsAsync(doc, section.SubSections, sectionChunkIds, sectionContentMap, sectionDocMap, sectionPathMap, sectionLineRangeMap);
                 // 有子章节，当前节点不单独处理
             }
             else
@@ -720,6 +645,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 sectionChunkIds[sectionId] = sectionId;
                 sectionDocMap[sectionId] = doc.DocId;
                 sectionPathMap[sectionId] = section.HeadingPath;
+                sectionLineRangeMap[sectionId] = (section.StartLine, section.EndLine);
 
                 // 构建 section 内容
                 var sectionContent = new System.Text.StringBuilder();
@@ -756,7 +682,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 {
   ""summary"": {
     ""definition"": ""知识点的精确定义（1-3句，必须填写）"",
-    ""key_points"": [""核心要点1"", ""核心要点2"", ""核心要点3""],
+    ""key_points"": [""核心要点1"", ""核心要点2"", ""核心要点3""] ,
     ""pitfalls"": [""常见误区1"", ""常见误区2""]
   },
   ""levels"": [
@@ -815,7 +741,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         return string.Empty;
     }
 
-    private static KnowledgeTreeNode BuildKnowledgeTree(List<KnowledgePoint> knowledgePoints)
+    public static KnowledgeTreeNode BuildKnowledgeTree(List<KnowledgePoint> knowledgePoints)
     {
         var root = new KnowledgeTreeNode
         {

@@ -1,6 +1,7 @@
 using ASimpleTutor.Api.Configuration;
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
+using ASimpleTutor.Core.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ASimpleTutor.Api.Controllers;
@@ -65,7 +66,7 @@ public class AdminController : ControllerBase
 
             sourceTracker.Clear();
 
-            var knowledgeSystem = await knowledgeBuilder.BuildAsync(
+            var (knowledgeSystem, documents) = await knowledgeBuilder.BuildAsync(
                 config.ActiveBookRootId,
                 bookRoot.Path);
 
@@ -78,14 +79,16 @@ public class AdminController : ControllerBase
             ChaptersController.SetKnowledgeSystem(knowledgeSystem);
             ExercisesController.SetKnowledgeSystem(knowledgeSystem);
 
-            logger.LogInformation("知识体系构建完成，共 {Count} 个知识点",
-                knowledgeSystem.KnowledgePoints.Count);
+            logger.LogInformation("知识体系构建完成，共 {Count} 个知识点，{DocCount} 个文档",
+                knowledgeSystem.KnowledgePoints.Count,
+                documents?.Count ?? 0);
 
             return Ok(new
             {
                 success = true,
                 message = "知识体系构建完成",
                 knowledgePointCount = knowledgeSystem.KnowledgePoints.Count,
+                documentCount = documents?.Count ?? 0,
                 bookRootId = config.ActiveBookRootId
             });
         }
@@ -100,13 +103,75 @@ public class AdminController : ControllerBase
     /// 获取状态
     /// </summary>
     [HttpGet("status")]
-    public IActionResult GetStatus([FromServices] AppConfig config)
+    public IActionResult GetStatus(
+        [FromServices] AppConfig config,
+        [FromServices] KnowledgeSystemStore store)
     {
         var hasSystem = GetKnowledgeSystem() != null;
+        var knowledgeSystem = GetKnowledgeSystem();
+        var documents = new List<Document>();
+        var bookRootName = string.Empty;
+        var knowledgePointCount = 0;
+        var snippetCount = 0;
+        var documentCount = 0;
+        dynamic documentsWithSections = new List<object>();
+
+        if (!string.IsNullOrEmpty(config.ActiveBookRootId))
+        {
+            // 获取书籍目录名称
+            var bookRoot = config.BookRoots.FirstOrDefault(b => b.Id == config.ActiveBookRootId);
+            if (bookRoot != null)
+            {
+                bookRootName = bookRoot.Name;
+            }
+
+            // 加载知识系统和文档信息
+            var loadResult = store.LoadAsync(config.ActiveBookRootId).GetAwaiter().GetResult();
+            if (loadResult.KnowledgeSystem != null)
+            {
+                knowledgeSystem = loadResult.KnowledgeSystem;
+                knowledgePointCount = knowledgeSystem.KnowledgePoints.Count;
+                snippetCount = knowledgeSystem.Snippets.Count;
+            }
+
+            if (loadResult.Documents != null)
+            {
+                documents = loadResult.Documents;
+                documentCount = documents.Count;
+
+                // 构建包含章节信息的文档列表
+                documentsWithSections = documents.Select(doc => new
+                {
+                    docId = doc.DocId,
+                    title = doc.Title,
+                    sections = doc.Sections.Select(section => new
+                    {
+                        sectionId = section.SectionId,
+                        headingPath = section.HeadingPath,
+                        subSections = section.SubSections.Select(subSection => new
+                        {
+                            sectionId = subSection.SectionId,
+                            headingPath = subSection.HeadingPath
+                        }).ToList()
+                    }).ToList()
+                }).ToList();
+            }
+        }
+
+        var status = "完整";
+        if (!hasSystem || knowledgePointCount == 0)
+        {
+            status = "未就绪";
+        }
+
         return Ok(new
         {
-            activeBookRootId = config.ActiveBookRootId,
-            hasKnowledgeSystem = hasSystem,
+            bookRootName = bookRootName,
+            knowledgePointCount = knowledgePointCount,
+            snippetCount = snippetCount,
+            documentCount = documentCount,
+            documents = documentsWithSections,
+            status = status,
             timestamp = DateTime.UtcNow
         });
     }
