@@ -20,25 +20,16 @@
               <span>{{ exercise.question }}</span>
             </div>
             <div class="answer">
-              <template v-if="exercise.type === 'SingleChoice' || exercise.type === 'TrueFalse'">
-                <label v-for="option in exercise.options" :key="option" class="option">
-                  <input
-                    type="radio"
-                    :name="exercise.id"
-                    :value="option"
-                    :checked="answers[exercise.id] === option"
-                    @change="$emit('answer-change', { id: exercise.id, value: option })"
-                  />
-                  {{ option }}
-                </label>
-              </template>
-              <template v-else>
-                <textarea
-                  :placeholder="'请输入你的理解'"
-                  :value="answers[exercise.id] || ''"
-                  @input="$emit('answer-change', { id: exercise.id, value: $event.target.value })"
-                ></textarea>
-              </template>
+              <label v-for="option in exercise.options" :key="option" class="option">
+                <input
+                  type="radio"
+                  :name="exercise.id"
+                  :value="option"
+                  :checked="answers[exercise.id] === option"
+                  @change="$emit('answer-change', { id: exercise.id, value: option })"
+                />
+                {{ option }}
+              </label>
             </div>
             <div class="actions">
               <button type="button" class="submit" @click="$emit('submit-one', exercise.id)">提交本题</button>

@@ -17,13 +17,28 @@ const props = defineProps({
   audioAvailable: {
     type: Boolean,
     default: false
+  },
+  // 习题相关的 props
+  quizAnswers: {
+    type: Object,
+    default: () => {}
+  },
+  quizFeedback: {
+    type: Object,
+    default: () => {}
+  },
+  // 是否可以进入下一章
+  hasNextChapter: {
+    type: Boolean,
+    default: false
   }
 })
 
-const emit = defineEmits(['update:currentIndex', 'slideChange', 'openExercises'])
+const emit = defineEmits(['update:currentIndex', 'slideChange', 'openExercises', 'updateQuizAnswer', 'submitQuizAnswer', 'nextChapter'])
 
 const audioPlaying = ref(false)
 const hoverSource = ref(null)
+const selectedOption = ref('')
 
 const currentSlide = computed(() => {
   if (props.slides.length === 0) return null
@@ -32,6 +47,21 @@ const currentSlide = computed(() => {
 
 const hasNext = computed(() => props.currentIndex < props.slides.length - 1)
 const hasPrev = computed(() => props.currentIndex > 0)
+
+const isQuizSlide = computed(() => currentSlide.value?.type === 'quiz')
+const currentExercise = computed(() => currentSlide.value?.exercise)
+const currentFeedback = computed(() => {
+  if (!currentExercise.value) return null
+  return props.quizFeedback[currentExercise.value.id]
+})
+const currentAnswer = computed(() => {
+  if (!currentExercise.value) return ''
+  return props.quizAnswers[currentExercise.value.id] || ''
+})
+
+const showNextChapterButton = computed(() => {
+  return !hasNext.value && props.hasNextChapter
+})
 
 const nextSlide = () => {
   if (hasNext.value) {
@@ -75,9 +105,8 @@ const handleKeydown = (event) => {
 }
 
 const handleSlideClick = (event) => {
-  // 如果是习题幻灯片，点击时打开习题抽屉
-  if (currentSlide.value?.type === 'quiz') {
-    emit('openExercises')
+  // 如果是习题幻灯片，不触发翻页
+  if (isQuizSlide.value) {
     return
   }
   
@@ -88,6 +117,21 @@ const handleSlideClick = (event) => {
   } else if (clickX > rect.width * 0.7) {
     nextSlide()
   }
+}
+
+const handleOptionChange = (option) => {
+  if (!currentExercise.value) return
+  selectedOption.value = option
+  emit('updateQuizAnswer', {
+    exerciseId: currentExercise.value.id,
+    value: option
+  })
+  
+  // 自动提交答案
+  emit('submitQuizAnswer', {
+    exerciseId: currentExercise.value.id,
+    answer: option
+  })
 }
 
 const handleKpLinkClick = (kpId) => {
@@ -109,6 +153,13 @@ setupKeyboardListener()
 watch(() => props.currentIndex, (newIndex) => {
   // 停止当前音频
   audioPlaying.value = false
+  // 重置选项选择
+  selectedOption.value = ''
+})
+
+// 监听当前答案变化
+watch(() => currentAnswer.value, (newAnswer) => {
+  selectedOption.value = newAnswer
 })
 </script>
 
@@ -136,6 +187,34 @@ watch(() => props.currentIndex, (newIndex) => {
         <div class="slide-content">
           <!-- 显示幻灯片内容 -->
           <div v-if="currentSlide.content" v-html="currentSlide.content"></div>
+          
+          <!-- 习题选项 -->
+          <div v-if="isQuizSlide && currentExercise" class="quiz-options">
+            <div 
+              v-for="(option, index) in currentExercise.options" 
+              :key="index"
+              class="quiz-option"
+              :class="{
+                selected: selectedOption === option,
+                correct: currentFeedback && currentFeedback.correct && selectedOption === option,
+                incorrect: currentFeedback && !currentFeedback.correct && selectedOption === option
+              }"
+              @click="handleOptionChange(option)"
+            >
+              {{ option }}
+            </div>
+          </div>
+          
+          <!-- 习题反馈 -->
+          <div v-if="isQuizSlide && currentFeedback" class="quiz-feedback">
+            <div class="feedback-header" :class="currentFeedback.correct ? 'correct' : 'incorrect'">
+              {{ currentFeedback.correct ? '回答正确 ✅' : '回答错误 ❌' }}
+            </div>
+            <div class="feedback-content">{{ currentFeedback.explanation }}</div>
+            <div v-if="!currentFeedback.correct" class="feedback-reference">
+              正确答案：{{ currentFeedback.referenceAnswer }}
+            </div>
+          </div>
           
           <!-- 为有原文来源的文本添加悬停事件 -->
           <div v-if="currentSlide.sources && currentSlide.sources.length > 0" class="sources-container">
@@ -185,6 +264,13 @@ watch(() => props.currentIndex, (newIndex) => {
       >
         Next &gt;
       </button>
+      <button 
+        v-if="showNextChapterButton"
+        class="nav-btn next-chapter"
+        @click="emit('nextChapter')"
+      >
+        下一章 &raquo;
+      </button>
     </div>
   </div>
 </template>
@@ -201,12 +287,12 @@ watch(() => props.currentIndex, (newIndex) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 15px;
 }
 
 .slide-header h2 {
   margin: 0;
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 600;
 }
 
@@ -234,45 +320,44 @@ watch(() => props.currentIndex, (newIndex) => {
 }
 
 .slide-container {
-  flex: 1;
+  flex: 0 1 auto;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  margin-bottom: 30px;
+  margin-bottom: 20px;
   position: relative;
+  overflow-y: auto;
+  max-height: 100%;
 }
 
 .slide-card {
   width: 100%;
   max-width: 800px;
-  min-height: 400px;
+  min-height: 350px;
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  padding: 40px;
+  padding: 25px;
+  margin: 20px;
   cursor: pointer;
   transition: transform 0.3s, box-shadow 0.3s;
   position: relative;
   overflow: hidden;
 }
 
-.slide-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
-}
 
 .slide-content {
-  font-size: 18px;
-  line-height: 1.6;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
 .slide-content h1, .slide-content h2, .slide-content h3 {
   margin-top: 0;
-  margin-bottom: 20px;
+  margin-bottom: 15px;
 }
 
 .slide-content p {
-  margin-bottom: 20px;
+  margin-bottom: 15px;
 }
 
 .slide-content a {
@@ -360,7 +445,7 @@ watch(() => props.currentIndex, (newIndex) => {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 20px;
+  gap: 15px;
 }
 
 .nav-btn {
@@ -391,11 +476,98 @@ watch(() => props.currentIndex, (newIndex) => {
   order: 3;
 }
 
+.nav-btn.next-chapter {
+  order: 4;
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
+}
+
+.nav-btn.next-chapter:hover:not(:disabled) {
+  background: #059669;
+  border-color: #059669;
+}
+
 .slide-counter {
   order: 2;
   font-size: 16px;
   font-weight: 500;
   color: #6c757d;
+}
+
+/* 习题相关样式 */
+.quiz-options {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quiz-option {
+  padding: 12px 16px;
+  background-color: #f8f9fa;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.quiz-option:hover {
+  background-color: #e9ecef;
+  border-color: #adb5bd;
+}
+
+.quiz-option.selected {
+  border-color: #007bff;
+  background-color: #e3f2fd;
+}
+
+.quiz-option.correct {
+  border-color: #28a745;
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.quiz-option.incorrect {
+  border-color: #dc3545;
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.quiz-feedback {
+  margin-top: 15px;
+  padding: 15px;
+  border-radius: 8px;
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+}
+
+.feedback-header {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.feedback-header.correct {
+  color: #28a745;
+}
+
+.feedback-header.incorrect {
+  color: #dc3545;
+}
+
+.feedback-content {
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+  color: #495057;
+}
+
+.feedback-reference {
+  font-size: 14px;
+  color: #6c757d;
+  font-style: italic;
 }
 
 /* 响应式设计 */
@@ -411,6 +583,24 @@ watch(() => props.currentIndex, (newIndex) => {
 
   .slide-header h2 {
     font-size: 20px;
+  }
+
+  .quiz-option {
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+
+  .quiz-feedback {
+    padding: 16px;
+  }
+
+  .feedback-header {
+    font-size: 16px;
+  }
+
+  .feedback-content,
+  .feedback-reference {
+    font-size: 13px;
   }
 }
 </style>

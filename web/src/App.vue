@@ -41,6 +41,10 @@ const exercisesDrawerOpen = ref(false)
 const exercises = ref([])
 const exercisesAnswers = ref({})
 const exercisesFeedback = ref({})
+
+// 习题幻灯片相关状态
+const quizAnswers = ref({})
+const quizFeedback = ref({})
 const globalError = ref(null)
 const globalLoading = ref(false)
 const learningLoading = ref(false)
@@ -72,6 +76,12 @@ const currentSlideTitle = computed(() => {
   return selectedChapter.value?.title || ''
 })
 
+const hasNextChapter = computed(() => {
+  if (!selectedChapter.value) return false
+  const currentIndex = chapters.value.findIndex(ch => ch.id === selectedChapter.value.id)
+  return currentIndex !== -1 && currentIndex < chapters.value.length - 1
+})
+
 const setError = (error) => {
   if (!error) {
     globalError.value = null
@@ -93,6 +103,10 @@ const resetLearningState = () => {
   exercises.value = []
   exercisesAnswers.value = {}
   exercisesFeedback.value = {}
+  
+  // 重置习题幻灯片相关状态
+  quizAnswers.value = {}
+  quizFeedback.value = {}
 }
 
 const loadBookRoots = async () => {
@@ -373,18 +387,21 @@ const loadSlides = async (kpId) => {
         console.error('加载原文失败:', error)
       }
       
-      // 检查是否有习题，如果有，添加习题幻灯片
+      // 检查是否有习题，如果有，为每道习题创建单独的幻灯片
       const exercisesStatusData = await getExercisesStatus(kpId)
       if (exercisesStatusData?.hasExercises) {
         try {
           const exercisesData = await getExercises(kpId)
           if (exercisesData?.items?.length > 0) {
-            slideItems.push({
-              id: `slide_${kpId}_exercises`,
-              content: `<h2>习题测试</h2><p>本知识点共有 ${exercisesData.items.length} 道习题</p>`,
-              type: 'quiz',
-              exercises: exercisesData.items,
-              sources: []
+            // 为每道习题创建单独的幻灯片
+            exercisesData.items.forEach((exercise, index) => {
+              slideItems.push({
+                id: `slide_${kpId}_exercise_${index}`,
+                content: `<h2>${exercise.question}</h2>`,
+                type: 'quiz',
+                exercise: exercise,
+                sources: []
+              })
             })
           }
         } catch (error) {
@@ -464,6 +481,26 @@ const submitOneAnswer = async (exerciseId) => {
     }
   } catch (error) {
     setError(error)
+  }
+}
+
+// 习题幻灯片相关函数
+const updateQuizAnswer = ({ exerciseId, value }) => {
+  quizAnswers.value = { ...quizAnswers.value, [exerciseId]: value }
+}
+
+const submitQuizAnswer = async (event) => {
+  const { exerciseId, answer } = event
+  try {
+    const data = await submitExercise(exerciseId, answer)
+    quizFeedback.value = {
+      ...quizFeedback.value,
+      [exerciseId]: data,
+    }
+    return data
+  } catch (error) {
+    setError(error)
+    return null
   }
 }
 
@@ -548,6 +585,15 @@ const handleSlideChange = (event) => {
     }
   } else if (typeof event === 'number') {
     currentSlideIndex.value = event
+  }
+}
+
+const handleNextChapter = () => {
+  if (!selectedChapter.value) return
+  const currentIndex = chapters.value.findIndex(ch => ch.id === selectedChapter.value.id)
+  if (currentIndex !== -1 && currentIndex < chapters.value.length - 1) {
+    const nextChapter = chapters.value[currentIndex + 1]
+    selectChapter(nextChapter)
   }
 }
 
@@ -637,8 +683,14 @@ onMounted(() => {
           v-model:current-index="currentSlideIndex"
           :title="currentSlideTitle"
           :audio-available="audioAvailable"
+          :quiz-answers="quizAnswers"
+          :quiz-feedback="quizFeedback"
+          :has-next-chapter="hasNextChapter"
           @slide-change="handleSlideChange"
           @open-exercises="openExercises"
+          @update-quiz-answer="updateQuizAnswer"
+          @submit-quiz-answer="submitQuizAnswer"
+          @next-chapter="handleNextChapter"
         />
       </main>
     </div>
