@@ -1,5 +1,6 @@
 using ASimpleTutor.Api.Configuration;
 using ASimpleTutor.Api.Controllers;
+using ASimpleTutor.Api.Logging;
 using ASimpleTutor.Api.Middleware;
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Services;
@@ -7,6 +8,15 @@ using Microsoft.Extensions.Logging;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 配置自定义日志格式化器
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole(options =>
+{
+    options.FormatterName = "SimpleCustom";
+});
+builder.Logging.AddConsoleFormatter<SimpleConsoleFormatter, SimpleConsoleFormatterOptions>();
+builder.Logging.SetMinimumLevel(LogLevel.Information);
 
 // 加载本地覆盖配置（不提交 git）：
 // - appsettings.local.json
@@ -25,13 +35,6 @@ builder.Services.AddSingleton(config);
 // 注册 SectioningOptions 配置
 builder.Services.Configure<ASimpleTutor.Core.Configuration.SectioningOptions>(
     builder.Configuration.GetSection("App:Sectioning"));
-
-// 注册日志
-builder.Services.AddLogging(logging =>
-{
-    logging.AddConsole();
-    logging.SetMinimumLevel(LogLevel.Information);
-});
 
 // 注册 Core 服务
 builder.Services.AddSingleton<IScannerService, MarkdownScanner>();

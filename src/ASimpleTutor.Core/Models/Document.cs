@@ -80,4 +80,9 @@ public class Section
     /// 过滤掉的字符数（原始字符数 - 有效字符数）
     /// </summary>
     public int FilteredLength { get; set; }
+
+    /// <summary>
+    /// 是否被排除（不参与后续处理）
+    /// </summary>
+    public bool IsExcluded { get; set; } = false;
 }

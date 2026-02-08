@@ -635,7 +635,12 @@ public class MarkdownScanner : IScannerService
         foreach (var headingNode in headingTree)
         {
             var section = BuildSectionFromHeading(headingNode, optimalLevels, lines, allHeadingNodes, ref sectionCounter);
-            sections.Add(section);
+            
+            // 只添加未被排除的章节
+            if (!section.IsExcluded)
+            {
+                sections.Add(section);
+            }
         }
         
         return sections;
@@ -674,6 +679,13 @@ public class MarkdownScanner : IScannerService
         // 获取当前节点的最优层级
         optimalLevels.TryGetValue(headingNode, out var optimalLevel);
         optimalLevel = optimalLevel > 0 ? optimalLevel : headingNode.Level;
+        
+        // 检查标题是否在排除列表中
+        if (ShouldExcludeSection(headingNode.Text))
+        {
+            _logger.LogInformation("跳过排除的章节: {Title}", headingNode.Text);
+            section.IsExcluded = true;
+        }
         
         // 构建子章节（如果当前节点的层级小于最优层级）
         if (headingNode.Level < optimalLevel)
@@ -732,6 +744,38 @@ public class MarkdownScanner : IScannerService
     private static bool IsHiddenOrTempFile(string fileName)
     {
         return fileName.StartsWith(".") || fileName.StartsWith("~") || fileName.EndsWith(".tmp") || fileName.EndsWith(".temp");
+    }
+
+    /// <summary>
+    /// 判断章节标题是否应该被排除
+    /// </summary>
+    private bool ShouldExcludeSection(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return false;
+        }
+
+        var normalizedTitle = title.Trim().ToLowerInvariant();
+        
+        foreach (var excludedTitle in _sectioningOptions.ExcludedSectionTitles)
+        {
+            var normalizedExcluded = excludedTitle.Trim().ToLowerInvariant();
+            
+            // 精确匹配
+            if (normalizedTitle == normalizedExcluded)
+            {
+                return true;
+            }
+            
+            // 包含匹配（处理带编号的情况，如 "1.1 本章小结"）
+            if (normalizedTitle.Contains(normalizedExcluded))
+            {
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     private static bool IsInExcludedDirectory(string path, string rootPath, List<string> excludeDirNames)

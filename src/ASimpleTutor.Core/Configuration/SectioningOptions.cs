@@ -13,6 +13,19 @@ public class SectioningOptions
     
     public SizeThresholdsOptions SizeThresholds { get; set; } = new();
     public StrategyWeightsOptions StrategyWeights { get; set; } = new();
+    
+    /// <summary>
+    /// 不需要处理的章节标题列表
+    /// </summary>
+    public List<string> ExcludedSectionTitles { get; set; } = new()
+    {
+        "本章小结",
+        "习题",
+        "参考文献",
+        "Chapter Summary",
+        "Exercises",
+        "References"
+    };
 }
 
 /// <summary>
