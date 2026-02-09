@@ -172,7 +172,7 @@ public class MarkdownScanner : IScannerService
         var doc = new Document
         {
             DocId = docId,
-            BookRootId = string.Empty, // 稍后设置
+            BookHubId = string.Empty, // 稍后设置
             Path = filePath,
             Title = ExtractTitle(content, lines),
             ContentHash = ComputeHash(content)

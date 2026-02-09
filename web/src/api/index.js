@@ -1,10 +1,10 @@
 import { apiFetch } from './http'
 
-export const getBookRoots = () => apiFetch('/books/roots')
-export const activateBookRoot = (bookRootId) =>
+export const getBookHubs = () => apiFetch('/books/hubs')
+export const activateBookHub = (bookHubId) =>
   apiFetch('/books/activate', {
     method: 'POST',
-    body: JSON.stringify({ bookRootId }),
+    body: JSON.stringify({ bookHubId }),
   })
 
 export const scanBooks = () => apiFetch('/books/scan', { method: 'POST' })

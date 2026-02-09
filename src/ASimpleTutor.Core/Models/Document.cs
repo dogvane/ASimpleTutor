@@ -11,9 +11,9 @@ public class Document
     public string DocId { get; set; } = string.Empty;
 
     /// <summary>
-    /// 所属书籍目录 ID
+    /// 书籍中心 ID
     /// </summary>
-    public string BookRootId { get; set; } = string.Empty;
+    public string BookHubId { get; set; } = string.Empty;
 
     /// <summary>
     /// 文档的本地文件系统完整路径

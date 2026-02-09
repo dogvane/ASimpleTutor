@@ -1,8 +1,8 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import {
-  activateBookRoot,
-  getBookRoots,
+  activateBookHub,
+  getBookHubs,
   getChapters,
   getExercises,
   getExercisesStatus,
@@ -24,8 +24,8 @@ import LoadingOverlay from './components/LoadingOverlay.vue'
 import SlideViewer from './components/SlideViewer.vue'
 import TopBar from './components/TopBar.vue'
 
-const bookRoots = ref([])
-const activeBookRootId = ref('')
+const bookHubs = ref([])
+const activeBookHubId = ref('')
 const scanStatus = ref('idle')
 const scanMessage = ref('')
 const chapters = ref([])
@@ -110,22 +110,22 @@ const resetLearningState = () => {
   quizFeedback.value = {}
 }
 
-const loadBookRoots = async () => {
+const loadBookHubs = async () => {
   globalLoading.value = true
   setError(null)
   try {
-    const data = await getBookRoots()
-    bookRoots.value = data.items || []
-    const nextActiveId = data.activeId || bookRoots.value[0]?.id || ''
-    activeBookRootId.value = nextActiveId
+    const data = await getBookHubs()
+    bookHubs.value = data.items || []
+    const nextActiveId = data.activeId || bookHubs.value[0]?.id || ''
+    activeBookHubId.value = nextActiveId
     if (nextActiveId) {
       if (!data.activeId) {
-        await activateBookRoot(nextActiveId)
+        await activateBookHub(nextActiveId)
       } else {
         await loadChapters()
       }
     } else {
-      setError({ message: '未配置书籍目录，请先配置并激活。', code: 'BOOKROOT_NOT_FOUND' })
+      setError({ message: '未配置书籍中心，请先配置并激活。', code: 'BOOKHUB_NOT_FOUND' })
     }
   } catch (error) {
     setError(error)
@@ -135,8 +135,8 @@ const loadBookRoots = async () => {
 }
 
 const scanAndLoad = async () => {
-  if (!activeBookRootId.value) {
-    setError({ message: '请先激活书籍目录', code: 'BOOKROOT_NOT_FOUND' })
+  if (!activeBookHubId.value) {
+    setError({ message: '请先激活书籍中心', code: 'BOOKHUB_NOT_FOUND' })
     return
   }
   scanStatus.value = 'scanning'
@@ -198,13 +198,13 @@ const loadChapters = async () => {
   }
 }
 
-const changeBookRoot = async (bookRootId) => {
-  if (!bookRootId || bookRootId === activeBookRootId.value) return
+const changeBookHub = async (bookHubId) => {
+  if (!bookHubId || bookHubId === activeBookHubId.value) return
   globalLoading.value = true
   setError(null)
   try {
-    await activateBookRoot(bookRootId)
-    activeBookRootId.value = bookRootId
+    await activateBookHub(bookHubId)
+    activeBookHubId.value = bookHubId
     await scanAndLoad()
   } catch (error) {
     setError(error)
@@ -544,8 +544,8 @@ const handleSearchSelect = (item) => {
 }
 
 const handleRefresh = async (type) => {
-  if (!activeBookRootId.value) {
-    setError({ message: '请先激活书籍目录', code: 'BOOKROOT_NOT_FOUND' })
+  if (!activeBookHubId.value) {
+    setError({ message: '请先激活书籍中心', code: 'BOOKHUB_NOT_FOUND' })
     return
   }
 
@@ -625,26 +625,26 @@ watch(
 )
 
 onMounted(() => {
-  loadBookRoots()
+  loadBookHubs()
 })
 </script>
 
 <template>
   <div class="app-shell">
     <TopBar
-      :book-roots="bookRoots"
-      :active-book-root-id="activeBookRootId"
+      :book-hubs="bookHubs"
+      :active-book-hub-id="activeBookHubId"
       :scan-status="scanStatus"
       :current-path="currentPath"
       :search-query="searchQuery"
-      @book-change="changeBookRoot"
+      @book-change="changeBookHub"
       @scan="scanAndLoad"
       @refresh="handleRefresh"
       @search-input="onSearchInput"
       @search-keydown="onSearchKeydown"
     />
 
-    <ErrorBanner v-if="globalError" :message="globalError.message" :code="globalError.code" :retry="loadBookRoots" />
+    <ErrorBanner v-if="globalError" :message="globalError.message" :code="globalError.code" :retry="loadBookHubs" />
 
     <div class="content">
       <aside class="sidebar">

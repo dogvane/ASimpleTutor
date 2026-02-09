@@ -1,22 +1,22 @@
 namespace ASimpleTutor.Core.Models;
 
 /// <summary>
-/// 书籍目录配置
+/// 书籍中心配置
 /// </summary>
-public class BookRoot
+public class BookHub
 {
     /// <summary>
-    /// 书籍目录唯一标识符
+    /// 书籍中心唯一标识符
     /// </summary>
     public string Id { get; set; } = string.Empty;
 
     /// <summary>
-    /// 书籍目录显示名称
+    /// 书籍中心显示名称
     /// </summary>
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// 书籍目录的本地文件系统路径
+    /// 书籍中心的本地文件系统路径
     /// </summary>
     public string Path { get; set; } = string.Empty;
 
@@ -31,7 +31,7 @@ public class BookRoot
     public List<string> ExcludeGlobs { get; set; } = new();
 
     /// <summary>
-    /// 是否启用该书籍目录
+    /// 是否启用该书籍中心
     /// </summary>
     public bool Enabled { get; set; } = true;
 
@@ -42,12 +42,12 @@ public class BookRoot
 }
 
 /// <summary>
-/// 当前激活的书籍目录
+/// 当前激活的书籍中心
 /// </summary>
-public class ActiveBookRoot
+public class ActiveBookHub
 {
     /// <summary>
-    /// 当前激活的书籍目录 ID
+    /// 当前激活的书籍中心 ID
     /// </summary>
-    public string? ActiveBookRootId { get; set; }
+    public string? ActiveBookHubId { get; set; }
 }

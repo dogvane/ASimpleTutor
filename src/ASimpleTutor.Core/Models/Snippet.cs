@@ -11,9 +11,9 @@ public class SourceSnippet
     public string SnippetId { get; set; } = string.Empty;
 
     /// <summary>
-    /// 所属书籍目录 ID
+    /// 书籍中心 ID
     /// </summary>
-    public string BookRootId { get; set; } = string.Empty;
+    public string BookHubId { get; set; } = string.Empty;
 
     /// <summary>
     /// 所属文档 ID

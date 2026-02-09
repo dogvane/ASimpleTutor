@@ -22,12 +22,12 @@ public class BooksController : ControllerBase
     }
 
     /// <summary>
-    /// 获取书籍目录列表
+    /// 获取书籍中心列表
     /// </summary>
-    [HttpGet("roots")]
+    [HttpGet("hubs")]
     public IActionResult GetBooks()
     {
-        var books = _config.BookRoots
+        var books = _config.BookHubs
             .Where(b => b.Enabled)
             .OrderBy(b => b.Order)
             .Select(b => new
@@ -35,10 +35,10 @@ public class BooksController : ControllerBase
                 b.Id,
                 b.Name,
                 b.Path,
-                IsActive = b.Id == _config.ActiveBookRootId
+                IsActive = b.Id == _config.ActiveBookHubId
             });
 
-        return Ok(new { items = books, activeId = _config.ActiveBookRootId });
+        return Ok(new { items = books, activeId = _config.ActiveBookHubId });
     }
 
     /// <summary>
@@ -47,10 +47,10 @@ public class BooksController : ControllerBase
     [HttpPost("activate")]
     public async Task<IActionResult> ActivateBook([FromBody] ActivateBookRequest request, [FromServices] IServiceProvider serviceProvider)
     {
-        var book = _config.BookRoots.FirstOrDefault(b => b.Id == request.BookRootId);
+        var book = _config.BookHubs.FirstOrDefault(b => b.Id == request.BookHubId);
         if (book == null)
         {
-            return NotFound(new { error = new { code = "BOOKROOT_NOT_FOUND", message = $"书籍目录不存在: {request.BookRootId}" } });
+            return NotFound(new { error = new { code = "BOOKHUB_NOT_FOUND", message = $"书籍中心不存在: {request.BookHubId}" } });
         }
 
         if (!Directory.Exists(book.Path))
@@ -58,10 +58,10 @@ public class BooksController : ControllerBase
             return BadRequest(new { error = new { code = "BAD_REQUEST", message = $"目录不存在: {book.Path}" } });
         }
 
-        _logger.LogInformation("激活书籍目录: {Id}", request.BookRootId);
-        _config.ActiveBookRootId = request.BookRootId;
+        _logger.LogInformation("激活书籍中心: {Id}", request.BookHubId);
+        _config.ActiveBookHubId = request.BookHubId;
 
-        return Ok(new { success = true, message = $"已激活书籍目录: {book.Name}" });
+        return Ok(new { success = true, message = $"已激活书籍中心: {book.Name}" });
     }
 
     /// <summary>
@@ -70,23 +70,23 @@ public class BooksController : ControllerBase
     [HttpPost("scan")]
     public async Task<IActionResult> TriggerScan([FromServices] IServiceProvider serviceProvider)
     {
-        if (string.IsNullOrEmpty(_config.ActiveBookRootId))
+        if (string.IsNullOrEmpty(_config.ActiveBookHubId))
         {
-            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "请先激活书籍目录" } });
+            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "请先激活书籍中心" } });
         }
 
-        var bookRoot = _config.BookRoots.FirstOrDefault(b => b.Id == _config.ActiveBookRootId);
-        if (bookRoot == null)
+        var bookHub = _config.BookHubs.FirstOrDefault(b => b.Id == _config.ActiveBookHubId);
+        if (bookHub == null)
         {
-            return NotFound(new { error = new { code = "BOOKROOT_NOT_FOUND", message = $"书籍目录不存在: {_config.ActiveBookRootId}" } });
+            return NotFound(new { error = new { code = "BOOKHUB_NOT_FOUND", message = $"书籍中心不存在: {_config.ActiveBookHubId}" } });
         }
 
-        if (!Directory.Exists(bookRoot.Path))
+        if (!Directory.Exists(bookHub.Path))
         {
-            return BadRequest(new { error = new { code = "BAD_REQUEST", message = $"目录不存在: {bookRoot.Path}" } });
+            return BadRequest(new { error = new { code = "BAD_REQUEST", message = $"目录不存在: {bookHub.Path}" } });
         }
 
-        _logger.LogInformation("开始构建知识体系: {BookRootId}", _config.ActiveBookRootId);
+        _logger.LogInformation("开始构建知识体系: {BookHubId}", _config.ActiveBookHubId);
 
         try
         {
@@ -94,8 +94,8 @@ public class BooksController : ControllerBase
             var store = serviceProvider.GetRequiredService<KnowledgeSystemStore>();
 
             var (knowledgeSystem, documents) = await knowledgeBuilder.BuildAsync(
-                _config.ActiveBookRootId,
-                bookRoot.Path);
+                _config.ActiveBookHubId,
+                bookHub.Path);
 
             // 保存到持久化存储
             await store.SaveAsync(knowledgeSystem, documents);
@@ -127,13 +127,13 @@ public class BooksController : ControllerBase
     [HttpDelete("cache")]
     public IActionResult ClearCache([FromServices] IServiceProvider serviceProvider)
     {
-        if (string.IsNullOrEmpty(_config.ActiveBookRootId))
+        if (string.IsNullOrEmpty(_config.ActiveBookHubId))
         {
-            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "请先激活书籍目录" } });
+            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "请先激活书籍中心" } });
         }
 
         var store = serviceProvider.GetRequiredService<KnowledgeSystemStore>();
-        var deleted = store.Delete(_config.ActiveBookRootId);
+        var deleted = store.Delete(_config.ActiveBookHubId);
 
         if (deleted)
         {
@@ -143,7 +143,7 @@ public class BooksController : ControllerBase
             ChaptersController.SetKnowledgeSystem(null);
             ExercisesController.SetKnowledgeSystem(null);
 
-            _logger.LogInformation("已清除知识系统缓存: {BookRootId}", _config.ActiveBookRootId);
+            _logger.LogInformation("已清除知识系统缓存: {BookHubId}", _config.ActiveBookHubId);
             return Ok(new { success = true, message = "缓存已清除" });
         }
 
@@ -153,5 +153,5 @@ public class BooksController : ControllerBase
 
 public class ActivateBookRequest
 {
-    public string BookRootId { get; set; } = string.Empty;
+    public string BookHubId { get; set; } = string.Empty;
 }

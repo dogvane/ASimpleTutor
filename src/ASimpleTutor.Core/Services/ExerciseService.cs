@@ -37,15 +37,15 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
             string snippetTexts = string.Empty;
 
             // 从 KnowledgeSystemStore 中加载原文片段
-            var bookRootId = kp.BookRootId;
-            if (!string.IsNullOrEmpty(bookRootId))
+            var bookHubId = kp.BookHubId;
+            if (!string.IsNullOrEmpty(bookHubId))
             {
                 // 从存储中加载知识系统
-                var loadResult = await _knowledgeSystemStore.LoadAsync(bookRootId, cancellationToken);
+                var loadResult = await _knowledgeSystemStore.LoadAsync(bookHubId, cancellationToken);
                 if (loadResult.KnowledgeSystem != null)
                 {
-                    _logger.LogInformation("从 KnowledgeSystemStore 加载知识系统成功: {BookRootId}, 知识点数量: {KpCount}, 原文片段数量: {SnippetCount}", 
-                        bookRootId, loadResult.KnowledgeSystem.KnowledgePoints.Count, loadResult.KnowledgeSystem.Snippets.Count);
+                    _logger.LogInformation("从 KnowledgeSystemStore 加载知识系统成功: {BookHubId}, 知识点数量: {KpCount}, 原文片段数量: {SnippetCount}", 
+                        bookHubId, loadResult.KnowledgeSystem.KnowledgePoints.Count, loadResult.KnowledgeSystem.Snippets.Count);
                     
                     // 尝试从知识系统的 Snippets 中获取原文片段
                     var knowledgeSystemSnippets = kp.SnippetIds

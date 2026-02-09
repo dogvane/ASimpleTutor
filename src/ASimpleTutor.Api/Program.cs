@@ -83,15 +83,15 @@ async Task TryLoadSavedKnowledgeSystemAsync()
     var store = scope.ServiceProvider.GetRequiredService<KnowledgeSystemStore>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-    // 获取已激活的书籍目录
-    var activeBookRootId = config.ActiveBookRootId;
-    if (!string.IsNullOrEmpty(activeBookRootId))
+    // 获取已激活的书籍中心
+    var activeBookHubId = config.ActiveBookHubId;
+    if (!string.IsNullOrEmpty(activeBookHubId))
     {
         // 检查存储文件的完整性
-        if (store.CheckStorageIntegrity(activeBookRootId))
+        if (store.CheckStorageIntegrity(activeBookHubId))
         {
-            logger.LogInformation("发现已保存的知识系统，正在加载: {BookRootId}", activeBookRootId);
-            var (knowledgeSystem, documents) = await store.LoadAsync(activeBookRootId);
+            logger.LogInformation("发现已保存的知识系统，正在加载: {BookHubId}", activeBookHubId);
+            var (knowledgeSystem, documents) = await store.LoadAsync(activeBookHubId);
             if (knowledgeSystem != null)
             {
                 AdminController.SetKnowledgeSystem(knowledgeSystem);
@@ -106,7 +106,7 @@ async Task TryLoadSavedKnowledgeSystemAsync()
         }
         else
         {
-            logger.LogInformation("未找到完整的已保存知识系统，请触发扫描: {BookRootId}", activeBookRootId);
+            logger.LogInformation("未找到完整的已保存知识系统，请触发扫描: {BookHubId}", activeBookHubId);
         }
     }
 }
@@ -120,46 +120,46 @@ async Task CheckAllSavedKnowledgeSystemsAsync()
 
     logger.LogInformation("开始检查所有已保存的知识点扫描结果状态...");
 
-    // 获取所有已保存的书籍目录 ID
-    var savedBookRootIds = store.GetAllSavedBookRootIds();
+    // 获取所有已保存的书籍中心 ID
+    var savedBookHubIds = store.GetAllSavedBookHubIds();
 
-    if (savedBookRootIds.Count == 0)
+    if (savedBookHubIds.Count == 0)
     {
         logger.LogInformation("未发现任何已保存的知识点扫描结果");
         Console.WriteLine("[启动检查] 未发现任何已保存的知识点扫描结果");
         return;
     }
 
-    logger.LogInformation("发现 {Count} 个已保存的知识点扫描结果", savedBookRootIds.Count);
-    Console.WriteLine($"[启动检查] 发现 {savedBookRootIds.Count} 个已保存的知识点扫描结果");
+    logger.LogInformation("发现 {Count} 个已保存的知识点扫描结果", savedBookHubIds.Count);
+    Console.WriteLine($"[启动检查] 发现 {savedBookHubIds.Count} 个已保存的知识点扫描结果");
 
-    foreach (var bookRootId in savedBookRootIds)
+    foreach (var bookHubId in savedBookHubIds)
     {
         // 检查存储文件的完整性
-        if (store.CheckStorageIntegrity(bookRootId))
+        if (store.CheckStorageIntegrity(bookHubId))
         {
             // 加载知识系统以获取详细信息
-            var (knowledgeSystem, documents) = await store.LoadAsync(bookRootId);
+            var (knowledgeSystem, documents) = await store.LoadAsync(bookHubId);
             if (knowledgeSystem != null)
             {
                 var kpCount = knowledgeSystem.KnowledgePoints.Count;
                 var snippetCount = knowledgeSystem.Snippets.Count;
                 var docCount = documents?.Count ?? 0;
 
-                logger.LogInformation("知识点扫描结果状态: 书籍目录={BookRootId}, 知识点数量={KpCount}, 原文片段数量={SnippetCount}, 文档数量={DocCount}, 状态=完整", 
-                    bookRootId, kpCount, snippetCount, docCount);
-                Console.WriteLine($"[启动检查] 书籍目录={bookRootId}, 知识点数量={kpCount}, 原文片段数量={snippetCount}, 文档数量={docCount}, 状态=完整");
+                logger.LogInformation("知识点扫描结果状态: 书籍中心={BookHubId}, 知识点数量={KpCount}, 原文片段数量={SnippetCount}, 文档数量={DocCount}, 状态=完整", 
+                    bookHubId, kpCount, snippetCount, docCount);
+                Console.WriteLine($"[启动检查] 书籍中心={bookHubId}, 知识点数量={kpCount}, 原文片段数量={snippetCount}, 文档数量={docCount}, 状态=完整");
             }
             else
             {
-                logger.LogWarning("知识点扫描结果状态: 书籍目录={BookRootId}, 状态=损坏或无法加载", bookRootId);
-                Console.WriteLine($"[启动检查] 书籍目录={bookRootId}, 状态=损坏或无法加载");
+                logger.LogWarning("知识点扫描结果状态: 书籍中心={BookHubId}, 状态=损坏或无法加载", bookHubId);
+                Console.WriteLine($"[启动检查] 书籍中心={bookHubId}, 状态=损坏或无法加载");
             }
         }
         else
         {
-            logger.LogWarning("知识点扫描结果状态: 书籍目录={BookRootId}, 状态=不完整", bookRootId);
-            Console.WriteLine($"[启动检查] 书籍目录={bookRootId}, 状态=不完整");
+            logger.LogWarning("知识点扫描结果状态: 书籍中心={BookHubId}, 状态=不完整", bookHubId);
+            Console.WriteLine($"[启动检查] 书籍中心={bookHubId}, 状态=不完整");
         }
     }
 
@@ -228,8 +228,8 @@ app.MapGet("/", () => Results.Ok(new
     endpoints = new[]
     {
         "GET /health - 健康检查",
-        "GET /api/v1/books/roots - 获取书籍目录列表",
-        "POST /api/v1/books/activate - 激活书籍目录",
+        "GET /api/v1/books/hubs - 获取书籍中心列表",
+        "POST /api/v1/books/activate - 激活书籍中心",
         "POST /api/v1/books/scan - 触发扫描",
         "GET /api/v1/chapters - 获取章节树",
         "GET /api/v1/chapters/search - 搜索章节",

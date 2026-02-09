@@ -8,17 +8,17 @@ namespace ASimpleTutor.Api.Configuration;
 /// </summary>
 public class AppConfig
 {
-    public List<BookRootConfig> BookRoots { get; set; } = new();
-    public string? ActiveBookRootId { get; set; }
+    public List<BookHubConfig> BookHubs { get; set; } = new();
+    public string? ActiveBookHubId { get; set; }
     public LlmConfig Llm { get; set; } = new();
     public string? StoragePath { get; set; }
     public SectioningOptions Sectioning { get; set; } = new();
 }
 
 /// <summary>
-/// 书籍目录配置
+/// 书籍中心配置
 /// </summary>
-public class BookRootConfig : BookRoot
+public class BookHubConfig : BookHub
 {
 }
 

@@ -26,13 +26,13 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         _logger = logger;
     }
 
-    public async Task<(KnowledgeSystem KnowledgeSystem, List<Document> Documents)> BuildAsync(string bookRootId, string rootPath, CancellationToken cancellationToken = default)
+    public async Task<(KnowledgeSystem KnowledgeSystem, List<Document> Documents)> BuildAsync(string bookHubId, string rootPath, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("开始构建知识体系: {BookRootId}", bookRootId);
+        _logger.LogInformation("开始构建知识体系: {BookHubId}", bookHubId);
 
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = bookRootId
+            BookHubId = bookHubId
         };
 
         List<Document> documents = new();
@@ -70,7 +70,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         {
             _logger.LogError(ex, "知识体系构建失败");
             // 降级：返回按文件/标题的目录树
-            knowledgeSystem = CreateFallbackKnowledgeSystem(bookRootId, documents);
+            knowledgeSystem = CreateFallbackKnowledgeSystem(bookHubId, documents);
         }
 
         return (knowledgeSystem, documents);
@@ -125,7 +125,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 var snippet = new SourceSnippet
                 {
                     SnippetId = sectionId,
-                    BookRootId = doc.BookRootId,
+                    BookHubId = doc.BookHubId,
                     DocId = docId,
                     FilePath = doc.Path,
                     HeadingPath = sectionPath,
@@ -296,7 +296,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                     {
                         var kpModel = kp.ToKnowledgePoint();
                         kpModel.KpId = $"kp_{index:D4}";
-                        kpModel.BookRootId = documents.FirstOrDefault()?.BookRootId ?? string.Empty;
+                        kpModel.BookHubId = documents.FirstOrDefault()?.BookHubId ?? string.Empty;
                         // 保留完整的章节路径
                         return kpModel;
                     })
@@ -821,11 +821,11 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         return root;
     }
 
-    private KnowledgeSystem CreateFallbackKnowledgeSystem(string bookRootId, List<Document> documents)
+    private KnowledgeSystem CreateFallbackKnowledgeSystem(string bookHubId, List<Document> documents)
     {
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = bookRootId
+            BookHubId = bookHubId
         };
 
         // 从文档标题创建临时知识点
@@ -835,7 +835,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
             var kp = new KnowledgePoint
             {
                 KpId = $"kp_{id++:D4}",
-                BookRootId = bookRootId,
+                BookHubId = bookHubId,
                 Title = doc.Title,
                 Type = KpType.Chapter,
                 ChapterPath = new List<string> { doc.Title },

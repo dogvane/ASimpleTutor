@@ -3,9 +3,9 @@
     <div class="left">
       <div class="select">
         <label>书籍</label>
-        <select :value="activeBookRootId" @change="onBookChange">
-          <option v-for="root in bookRoots" :key="root.id" :value="root.id">
-            {{ root.name }}
+        <select :value="activeBookHubId" @change="onBookChange">
+          <option v-for="hub in bookHubs" :key="hub.id" :value="hub.id">
+            {{ hub.name }}
           </option>
         </select>
       </div>
@@ -56,11 +56,11 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 defineProps({
-  bookRoots: {
+  bookHubs: {
     type: Array,
     default: () => [],
   },
-  activeBookRootId: {
+  activeBookHubId: {
     type: String,
     default: '',
   },

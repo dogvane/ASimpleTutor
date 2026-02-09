@@ -9,7 +9,7 @@
   <text class="text" x="40" y="55">书籍选择与扫描</text>
 
   <rect class="box" x="40" y="80" width="260" height="44" rx="6"/>
-  <text class="label" x="52" y="108">BookRoot 下拉</text>
+  <text class="label" x="52" y="108">BookHub 下拉</text>
 
   <rect class="box" x="310" y="80" width="120" height="44" rx="6"/>
   <text class="label" x="332" y="108">重新扫描</text>

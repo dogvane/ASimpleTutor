@@ -41,31 +41,31 @@ public class AdminController : ControllerBase
         [FromServices] IServiceProvider serviceProvider,
         [FromServices] ILogger<AdminController> logger)
     {
-        if (string.IsNullOrEmpty(config.ActiveBookRootId))
+        if (string.IsNullOrEmpty(config.ActiveBookHubId))
         {
-            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "请先激活书籍目录" } });
+            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "请先激活书籍中心" } });
         }
 
-        var bookRoot = config.BookRoots.FirstOrDefault(b => b.Id == config.ActiveBookRootId);
-        if (bookRoot == null)
+        var bookHub = config.BookHubs.FirstOrDefault(b => b.Id == config.ActiveBookHubId);
+        if (bookHub == null)
         {
-            return BadRequest(new { error = new { code = "BOOKROOT_NOT_FOUND", message = $"书籍目录不存在: {config.ActiveBookRootId}" } });
+            return BadRequest(new { error = new { code = "BOOKHUB_NOT_FOUND", message = $"书籍中心不存在: {config.ActiveBookHubId}" } });
         }
 
-        if (!Directory.Exists(bookRoot.Path))
+        if (!Directory.Exists(bookHub.Path))
         {
-            return BadRequest(new { error = new { code = "BAD_REQUEST", message = $"目录不存在: {bookRoot.Path}" } });
+            return BadRequest(new { error = new { code = "BAD_REQUEST", message = $"目录不存在: {bookHub.Path}" } });
         }
 
-        logger.LogInformation("开始构建知识体系: {BookRootId}", config.ActiveBookRootId);
+        logger.LogInformation("开始构建知识体系: {BookHubId}", config.ActiveBookHubId);
 
         try
         {
             var knowledgeBuilder = serviceProvider.GetRequiredService<IKnowledgeBuilder>();
 
             var (knowledgeSystem, documents) = await knowledgeBuilder.BuildAsync(
-                config.ActiveBookRootId,
-                bookRoot.Path);
+                config.ActiveBookHubId,
+                bookHub.Path);
 
             lock (_lock)
             {
@@ -86,7 +86,7 @@ public class AdminController : ControllerBase
                 message = "知识体系构建完成",
                 knowledgePointCount = knowledgeSystem.KnowledgePoints.Count,
                 documentCount = documents?.Count ?? 0,
-                bookRootId = config.ActiveBookRootId
+                bookHubId = config.ActiveBookHubId
             });
         }
         catch (Exception ex)
@@ -107,23 +107,23 @@ public class AdminController : ControllerBase
         var hasSystem = GetKnowledgeSystem() != null;
         var knowledgeSystem = GetKnowledgeSystem();
         var documents = new List<Document>();
-        var bookRootName = string.Empty;
+        var bookHubName = string.Empty;
         var knowledgePointCount = 0;
         var snippetCount = 0;
         var documentCount = 0;
         dynamic documentsWithSections = new List<object>();
 
-        if (!string.IsNullOrEmpty(config.ActiveBookRootId))
+        if (!string.IsNullOrEmpty(config.ActiveBookHubId))
         {
-            // 获取书籍目录名称
-            var bookRoot = config.BookRoots.FirstOrDefault(b => b.Id == config.ActiveBookRootId);
-            if (bookRoot != null)
+            // 获取书籍中心名称
+            var bookHub = config.BookHubs.FirstOrDefault(b => b.Id == config.ActiveBookHubId);
+            if (bookHub != null)
             {
-                bookRootName = bookRoot.Name;
+                bookHubName = bookHub.Name;
             }
 
             // 加载知识系统和文档信息
-            var loadResult = store.LoadAsync(config.ActiveBookRootId).GetAwaiter().GetResult();
+            var loadResult = store.LoadAsync(config.ActiveBookHubId).GetAwaiter().GetResult();
             if (loadResult.KnowledgeSystem != null)
             {
                 knowledgeSystem = loadResult.KnowledgeSystem;
@@ -163,7 +163,7 @@ public class AdminController : ControllerBase
 
         return Ok(new
         {
-            bookRootName = bookRootName,
+            bookHubName = bookHubName,
             knowledgePointCount = knowledgePointCount,
             snippetCount = snippetCount,
             documentCount = documentCount,

@@ -33,10 +33,10 @@ public class LearningGenerator : ILearningGenerator
         try
         {
             // 1. 从 KnowledgeSystemStore 获取原文片段
-            var bookRootId = kp.BookRootId;
-            if (!string.IsNullOrEmpty(bookRootId))
+            var bookHubId = kp.BookHubId;
+            if (!string.IsNullOrEmpty(bookHubId))
             {
-                var loadResult = await _knowledgeSystemStore.LoadAsync(bookRootId, cancellationToken);
+                var loadResult = await _knowledgeSystemStore.LoadAsync(bookHubId, cancellationToken);
                 if (loadResult.KnowledgeSystem != null)
                 {
                     snippets = kp.SnippetIds
