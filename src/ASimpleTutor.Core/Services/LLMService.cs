@@ -6,6 +6,8 @@ using OpenAI;
 using OpenAI.Chat;
 using Newtonsoft.Json;
 using System.ClientModel;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace ASimpleTutor.Core.Services;
 
@@ -17,6 +19,7 @@ public class LLMService : ILLMService
     private readonly ChatClient _client;
     private readonly string _model;
     private readonly ILogger<LLMService> _logger;
+    private readonly string _cacheDirectory;
 
     private readonly bool _isOllama;
 
@@ -24,6 +27,14 @@ public class LLMService : ILLMService
     {
         _model = model;
         _logger = logger;
+        _cacheDirectory = Path.Combine(AppContext.BaseDirectory, "llm_cache");
+
+        // 创建缓存目录
+        if (!Directory.Exists(_cacheDirectory))
+        {
+            Directory.CreateDirectory(_cacheDirectory);
+            _logger.LogInformation("创建 LLM 缓存目录: {CacheDir}", _cacheDirectory);
+        }
 
         // 判断是否是 Ollama 模型（根据 model 名称）
         _isOllama = "ollama".Equals(model, StringComparison.OrdinalIgnoreCase) || 
@@ -46,6 +57,77 @@ public class LLMService : ILLMService
         }
     }
 
+    /// <summary>
+    /// 生成缓存键
+    /// </summary>
+    private string GenerateCacheKey(string systemPrompt, string userMessage, float? temperature)
+    {
+        var key = $"{systemPrompt}|{userMessage}|{temperature ?? 0.7f}";
+        using var sha256 = SHA256.Create();
+        var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(key));
+        return Convert.ToHexString(bytes).ToLower();
+    }
+
+    /// <summary>
+    /// 从缓存中读取响应
+    /// </summary>
+    private async Task<string?> ReadFromCacheAsync(string cacheKey)
+    {
+        var filePath = Path.Combine(_cacheDirectory, $"{cacheKey}.json");
+        if (File.Exists(filePath))
+        {
+            try
+            {
+                var content = await File.ReadAllTextAsync(filePath);
+                var cacheEntry = JsonConvert.DeserializeObject<CacheEntry>(content);
+                if (cacheEntry != null)
+                {
+                    _logger.LogInformation("从缓存中读取 LLM 响应");
+                    return cacheEntry.Response;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "读取缓存失败: {FilePath}", filePath);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 将响应写入缓存
+    /// </summary>
+    private async Task WriteToCacheAsync(string cacheKey, string response)
+    {
+        var filePath = Path.Combine(_cacheDirectory, $"{cacheKey}.json");
+        try
+        {
+            var cacheEntry = new CacheEntry
+            {
+                Response = response,
+                Model = _model,
+                Timestamp = DateTime.UtcNow
+            };
+            var content = JsonConvert.SerializeObject(cacheEntry, Formatting.Indented);
+            await File.WriteAllTextAsync(filePath, content);
+            _logger.LogInformation("将 LLM 响应写入缓存");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "写入缓存失败: {FilePath}", filePath);
+        }
+    }
+
+    /// <summary>
+    /// 缓存条目
+    /// </summary>
+    private class CacheEntry
+    {
+        public string Response { get; set; } = string.Empty;
+        public string Model { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; }
+    }
+
     public async Task<string> ChatAsync(string systemPrompt, string userMessage, CancellationToken cancellationToken = default)
     {
         return await ChatWithOptionsAsync(systemPrompt, userMessage, temperature: null, cancellationToken);
@@ -57,6 +139,16 @@ public class LLMService : ILLMService
         float? temperature,
         CancellationToken cancellationToken = default)
     {
+        // 生成缓存键
+        var cacheKey = GenerateCacheKey(systemPrompt, userMessage, temperature);
+
+        // 尝试从缓存读取
+        var cachedResponse = await ReadFromCacheAsync(cacheKey);
+        if (!string.IsNullOrEmpty(cachedResponse))
+        {
+            return cachedResponse;
+        }
+
         try
         {
             _logger.LogDebug("调用 LLM，模型: {Model}, 温度: {Temp}", _model, temperature ?? 0.7f);
@@ -94,11 +186,15 @@ public class LLMService : ILLMService
 
             var response = await _client.CompleteChatAsync(messages, options, linkedCts.Token);
 
-            var content = response.Value.Content[0].Text;
-            _logger.LogDebug("LLM 响应长度: {Length}", content?.Length ?? 0);
+            var content = response.Value.Content[0].Text ?? string.Empty;
+            _logger.LogDebug("LLM 响应长度: {Length}", content.Length);
             _logger.LogDebug("LLM 响应内容（前500字符）: {Content}", 
-                content?.Length > 500 ? content.Substring(0, 500) + "..." : content);
-            return content ?? string.Empty;
+                content.Length > 500 ? content.Substring(0, 500) + "..." : content);
+
+            // 写入缓存
+            await WriteToCacheAsync(cacheKey, content);
+
+            return content;
         }
         catch (Exception ex)
         {
