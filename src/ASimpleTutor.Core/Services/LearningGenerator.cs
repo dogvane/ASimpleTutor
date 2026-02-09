@@ -140,12 +140,14 @@ public class LearningGenerator : ILearningGenerator
 5. 幻灯片卡片要包含 3-5 张，类型要多样化
 6. content 可以使用 Markdown 格式
 7. summary.definition 必须填写，不能为空
+8. 必须过滤掉参考文献、引用列表等非核心内容
 
 自检要求：
 - summary.definition 不能为空
 - levels 至少包含 level=1 的内容
 - slide_cards 至少包含 1 张卡片
-- 如果无法生成有效内容，请返回空对象 {} 而非报错";
+- 必须返回完整的 JSON 对象，不能返回空对象 {}
+- 如果无法生成有效内容，请返回包含基本信息的对象，而非空对象 {}";
 
         var userMessage = $"知识点标题：{kp.Title}\n" +
                           $"知识点类型：{kp.Type}\n" +
@@ -159,25 +161,58 @@ public class LearningGenerator : ILearningGenerator
 
         if (content == null)
         {
+            _logger.LogWarning("LLM 返回内容为空: {KpId}", kp.KpId);
             return null;
+        }
+
+        // 检测空对象或无效内容
+        if (content.Summary == null && (content.Levels == null || content.Levels.Count == 0) && (content.SlideCards == null || content.SlideCards.Count == 0))
+        {
+            _logger.LogWarning("LLM 返回空对象或无效内容: {KpId}", kp.KpId);
+            return null;
+        }
+
+        // 过滤参考文献内容
+        if (content.Summary != null)
+        {
+            content.Summary.Definition = FilterReferences(content.Summary.Definition);
+            content.Summary.KeyPoints = content.Summary.KeyPoints?.Select(FilterReferences).ToList() ?? new List<string>();
+            content.Summary.Pitfalls = content.Summary.Pitfalls?.Select(FilterReferences).ToList() ?? new List<string>();
+        }
+
+        if (content.Levels != null)
+        {
+            foreach (var level in content.Levels)
+            {
+                level.Content = FilterReferences(level.Content);
+            }
+        }
+
+        if (content.SlideCards != null)
+        {
+            foreach (var card in content.SlideCards)
+            {
+                card.Content = FilterReferences(card.Content) ?? string.Empty;
+                card.Title = FilterReferences(card.Title) ?? string.Empty;
+                card.Subtitle = FilterReferences(card.Subtitle) ?? string.Empty;
+            }
         }
 
         var learningPack = new LearningPack
         {
             KpId = kp.KpId,
-            Summary = content.Summary,
-            Levels = content.Levels,
+            Summary = content.Summary ?? new Summary(),
+            Levels = content.Levels ?? new List<ContentLevel>(),
             SnippetIds = kp.SnippetIds,
             RelatedKpIds = new List<string>(),
-            SlideCards = content.SlideCards
-                .Select((dto, index) => new SlideCard
+            SlideCards = content.SlideCards?.Select((dto, index) => new SlideCard
                 {
                     SlideId = dto.SlideId ?? $"{kp.KpId}_slide_{index}",
                     KpId = kp.KpId,
                     Type = ConvertSlideType(dto.Type),
                     Order = dto.Order,
-                    Title = dto.Title,
-                    HtmlContent = dto.Content,
+                    Title = dto.Title ?? string.Empty,
+                    HtmlContent = dto.Content ?? string.Empty,
                     SourceReferences = new List<SourceReference>(),
                     Config = new SlideConfig
                     {
@@ -185,10 +220,39 @@ public class LearningGenerator : ILearningGenerator
                         RequireComplete = dto.Config?.RequireComplete ?? false
                     }
                 })
-                .ToList()
+                .ToList() ?? new List<SlideCard>()
         };
 
         return learningPack;
+    }
+
+    /// <summary>
+    /// 过滤参考文献内容
+    /// </summary>
+    private string FilterReferences(string? content)
+    {
+        if (string.IsNullOrEmpty(content))
+            return string.Empty;
+
+        var result = content;
+
+        // 过滤参考文献相关内容
+        var referencePatterns = new[]
+        {
+            @"##\s*参考文献\s*[\s\S]*?(?=\n##|\Z)",
+            @"##\s*References\s*[\s\S]*?(?=\n##|\Z)",
+            @"##\s*参考书目\s*[\s\S]*?(?=\n##|\Z)",
+            @"\[\d+\]\s*[A-Z][^\n]*",
+            @"参考文献\s*[:：][\s\S]*?(?=\n\n|\Z)",
+            @"References\s*[:：][\s\S]*?(?=\n\n|\Z)"
+        };
+
+        foreach (var pattern in referencePatterns)
+        {
+            result = System.Text.RegularExpressions.Regex.Replace(result, pattern, "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+
+        return result.Trim();
     }
 
     private SlideType ConvertSlideType(SlideTypeDto dtoType)

@@ -98,34 +98,35 @@ public class ChaptersController : ControllerBase
 
         var result = new List<ChapterTreeNode>();
 
-        // 只处理第一层和第二层
+        // 处理第一层节点
         foreach (var child in node.Children)
         {
-            var headingCount = child.HeadingPath.Count;
+            // 过滤掉排除章节（习题、小结、参考文献等）
+            if (IsExcludedChapter(child.Title))
+                continue;
 
-            // 第一层和第二层才显示
-            if (headingCount <= 2)
+            // 提取最后一级标题，避免显示完整路径
+            var displayTitle = ExtractLastLevelTitle(child.Title);
+            
+            result.Add(new ChapterTreeNode
             {
-                result.Add(new ChapterTreeNode
-                {
-                    Id = child.Id,
-                    Title = child.Title,
-                    Level = headingCount,
-                    // 只有第一层默认展开
-                    Expanded = headingCount == 1,
-                    // 只对第一层递归构建子节点（第二层不展开子节点）
-                    Children = headingCount == 1 ? BuildSecondLevelTree(child) : new List<ChapterTreeNode>()
-                });
-            }
+                Id = child.Id,
+                Title = displayTitle,
+                Level = 1, // 第一层固定为 level1
+                // 只有第一层默认展开
+                Expanded = true,
+                // 递归构建子节点
+                Children = BuildChildNodes(child)
+            });
         }
 
         return result;
     }
 
     /// <summary>
-    /// 构建第二层树（不展开子节点）
+    /// 构建子节点树
     /// </summary>
-    private static List<ChapterTreeNode> BuildSecondLevelTree(KnowledgeTreeNode? node)
+    private static List<ChapterTreeNode> BuildChildNodes(KnowledgeTreeNode? node)
     {
         if (node == null)
             return new List<ChapterTreeNode>();
@@ -134,28 +135,59 @@ public class ChaptersController : ControllerBase
 
         foreach (var child in node.Children)
         {
-            var headingCount = child.HeadingPath.Count;
+            // 过滤掉排除章节（习题、小结、参考文献等）
+            if (IsExcludedChapter(child.Title))
+                continue;
 
-            // 只显示第二层，不递归更深
-            if (headingCount <= 2)
+            // 提取最后一级标题，避免显示完整路径
+            var displayTitle = ExtractLastLevelTitle(child.Title);
+
+            result.Add(new ChapterTreeNode
             {
-                // 第二层的 title 只显示最后一级的名称
-                var lastTitle = child.HeadingPath.Count > 0
-                    ? child.HeadingPath[child.HeadingPath.Count - 1]
-                    : child.Title;
-
-                result.Add(new ChapterTreeNode
-                {
-                    Id = child.Id,
-                    Title = lastTitle,
-                    Level = 2, // 第二层固定为 level 2
-                    Expanded = false,
-                    Children = new List<ChapterTreeNode>()
-                });
-            }
+                Id = child.Id,
+                Title = displayTitle,
+                Level = 2, // 第二层及以下固定为 level 2
+                Expanded = false,
+                // 不递归更深，只显示两层
+                Children = new List<ChapterTreeNode>()
+            });
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// 提取最后一级章节标题，处理包含完整路径的情况
+    /// </summary>
+    private static string ExtractLastLevelTitle(string title)
+    {
+        if (string.IsNullOrEmpty(title))
+            return title;
+
+        // 如果标题包含 " > "，只取最后一部分
+        if (title.Contains(" > "))
+        {
+            var parts = title.Split(new[] { " > " }, StringSplitOptions.RemoveEmptyEntries);
+            return parts.LastOrDefault() ?? title;
+        }
+
+        return title;
+    }
+
+    /// <summary>
+    /// 判断是否为排除章节（习题、小结、参考文献等）
+    /// </summary>
+    private static bool IsExcludedChapter(string title)
+    {
+        // 使用与 SectioningOptions 中相同的逻辑判断是否为排除章节
+        if (string.IsNullOrWhiteSpace(title))
+            return false;
+
+        var normalizedTitle = title.Trim().ToLowerInvariant();
+        
+        // 与 SectioningOptions.ExcludedSectionTitles 保持一致
+        var excludedKeywords = new[] { "习题", "练习", "本章小结", "本章总结", "章节小结", "章节总结", "参考文献", "exercises", "practice", "chapter summary", "chapter conclusion", "references" };
+        return excludedKeywords.Any(keyword => normalizedTitle.Contains(keyword));
     }
 
     private static void CollectSearchResults(KnowledgeTreeNode? node, string query, List<object> results, int limit, ref int count)
@@ -163,23 +195,27 @@ public class ChaptersController : ControllerBase
         if (node == null || count >= limit)
             return;
 
-        if (node.Title.ToLower().Contains(query))
+        // 过滤掉排除章节（习题、小结、参考文献等）
+        if (!IsExcludedChapter(node.Title))
         {
-            results.Add(new
+            if (node.Title.ToLower().Contains(query))
             {
-                id = node.Id,
-                title = node.Title,
-                level = node.HeadingPath.Count,
-                parentId = node.HeadingPath.Count > 1 ? node.HeadingPath[node.HeadingPath.Count - 2] : null
-            });
-            count++;
-        }
+                results.Add(new
+                {
+                    id = node.Id,
+                    title = node.Title,
+                    level = node.HeadingPath.Count,
+                    parentId = node.HeadingPath.Count > 1 ? node.HeadingPath[node.HeadingPath.Count - 2] : null
+                });
+                count++;
+            }
 
-        foreach (var child in node.Children)
-        {
-            CollectSearchResults(child, query, results, limit, ref count);
-            if (count >= limit)
-                break;
+            foreach (var child in node.Children)
+            {
+                CollectSearchResults(child, query, results, limit, ref count);
+                if (count >= limit)
+                    break;
+            }
         }
     }
 
@@ -188,6 +224,10 @@ public class ChaptersController : ControllerBase
         var result = new List<KnowledgePoint>();
 
         if (node == null)
+            return result;
+
+        // 过滤掉排除章节（习题、小结、参考文献等）
+        if (IsExcludedChapter(node.Title))
             return result;
 
         // 检查当前节点是否匹配（精确匹配 ID 或 ID 是当前节点的路径前缀）
