@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { marked } from 'marked'
 
 const props = defineProps({
   slides: {
@@ -57,6 +58,13 @@ const currentFeedback = computed(() => {
 const currentAnswer = computed(() => {
   if (!currentExercise.value) return ''
   return props.quizAnswers[currentExercise.value.id] || ''
+})
+
+// 计算属性：将 Markdown 转换为 HTML
+const slideContentHtml = computed(() => {
+  if (!currentSlide.value?.content) return ''
+  // 使用 marked 解析 Markdown 为 HTML
+  return marked(currentSlide.value.content)
 })
 
 const showNextChapterButton = computed(() => {
@@ -186,7 +194,7 @@ watch(() => currentAnswer.value, (newAnswer) => {
         <!-- 幻灯片内容 -->
         <div class="slide-content">
           <!-- 显示幻灯片内容 -->
-          <div v-if="currentSlide.content" v-html="currentSlide.content"></div>
+          <div v-if="currentSlide.content" v-html="slideContentHtml"></div>
           
           <!-- 习题选项 -->
           <div v-if="isQuizSlide && currentExercise" class="quiz-options">
@@ -332,8 +340,8 @@ watch(() => currentAnswer.value, (newAnswer) => {
 
 .slide-card {
   width: 100%;
-  max-width: 800px;
-  min-height: 350px;
+  max-width: 90vw;
+  min-height: 60vh;
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
@@ -342,7 +350,14 @@ watch(() => currentAnswer.value, (newAnswer) => {
   cursor: pointer;
   transition: transform 0.3s, box-shadow 0.3s;
   position: relative;
-  overflow: hidden;
+}
+
+/* 在大屏幕上限制最大高度 */
+@media (min-height: 600px) {
+  .slide-card {
+    max-height: 80vh;
+    overflow-y: auto;
+  }
 }
 
 
@@ -368,6 +383,29 @@ watch(() => currentAnswer.value, (newAnswer) => {
 
 .slide-content a:hover {
   color: #0056b3;
+}
+
+/* 限制图片大小 */
+.slide-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+/* 限制表格大小 */
+.slide-content table {
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
+}
+
+/* 限制代码块大小 */
+.slide-content pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .source-hover {

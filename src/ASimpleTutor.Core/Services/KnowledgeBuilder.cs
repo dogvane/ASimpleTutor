@@ -310,6 +310,9 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         catch (Exception ex)
         {
             _logger.LogError(ex, "调用 LLM 提取知识点失败");
+            _logger.LogError("失败上下文：文档数={DocumentCount}, 章节数={SectionCount}, 当前处理到的章节={CurrentSection}", 
+                documents.Count, sectionChunkIds.Count, sectionChunkIds.Keys.LastOrDefault());
+            _logger.LogError("可能的原因：LLM 服务不可用、API 密钥无效、网络连接问题或内容长度超过限制");
             return (new List<KnowledgePoint>(), snippets);
         }
     }
