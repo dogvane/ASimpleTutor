@@ -1,9 +1,13 @@
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
+using ASimpleTutor.Core.Models.Dto;
 using ASimpleTutor.Core.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ASimpleTutor.Tests.KnowledgeBuilding;
 
@@ -15,8 +19,6 @@ public class KnowledgeBuildingTests
 {
     private readonly Mock<ILogger<KnowledgeBuilder>> _loggerMock;
     private readonly Mock<IScannerService> _scannerServiceMock;
-    private readonly Mock<ISimpleRagService> _ragServiceMock;
-    private readonly Mock<ISourceTracker> _sourceTrackerMock;
     private readonly Mock<ILLMService> _llmServiceMock;
     private readonly KnowledgeBuilder _knowledgeBuilder;
 
@@ -24,14 +26,10 @@ public class KnowledgeBuildingTests
     {
         _loggerMock = new Mock<ILogger<KnowledgeBuilder>>();
         _scannerServiceMock = new Mock<IScannerService>();
-        _ragServiceMock = new Mock<ISimpleRagService>();
-        _sourceTrackerMock = new Mock<ISourceTracker>();
         _llmServiceMock = new Mock<ILLMService>();
 
         _knowledgeBuilder = new KnowledgeBuilder(
             _scannerServiceMock.Object,
-            _ragServiceMock.Object,
-            _sourceTrackerMock.Object,
             _llmServiceMock.Object,
             _loggerMock.Object);
     }
@@ -59,7 +57,8 @@ public class KnowledgeBuildingTests
                     Title = "核心概念A",
                     ChapterPath = new List<string> { "第一章", "第一节" },
                     Importance = 0.8f,
-                    SnippetIds = new List<string> { "snippet_1" }
+                    SnippetIds = new List<string> { "snippet_1" },
+                    Type = "concept"
                 },
                 new KnowledgePointDto
                 {
@@ -67,7 +66,8 @@ public class KnowledgeBuildingTests
                     Title = "核心概念B",
                     ChapterPath = new List<string> { "第一章", "第二节" },
                     Importance = 0.6f,
-                    SnippetIds = new List<string> { "snippet_2" }
+                    SnippetIds = new List<string> { "snippet_2" },
+                    Type = "concept"
                 }
             }
         };
@@ -79,17 +79,13 @@ public class KnowledgeBuildingTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(kpResponse);
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSource(It.IsAny<string>()))
-            .Returns((string id) => new SourceSnippet { SnippetId = id, Content = "Test content" });
-
         // Act
         var result = await _knowledgeBuilder.BuildAsync(bookRootId, rootPath, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.BookRootId.Should().Be(bookRootId);
-        result.KnowledgePoints.Should().NotBeEmpty();
+        result.KnowledgeSystem.Should().NotBeNull();
+        result.KnowledgeSystem.BookRootId.Should().Be(bookRootId);
+        result.KnowledgeSystem.KnowledgePoints.Should().NotBeEmpty();
     }
 
     [Fact]
@@ -107,13 +103,13 @@ public class KnowledgeBuildingTests
         var result = await _knowledgeBuilder.BuildAsync(bookRootId, rootPath, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.BookRootId.Should().Be(bookRootId);
-        result.KnowledgePoints.Should().BeEmpty();
+        result.KnowledgeSystem.Should().NotBeNull();
+        result.KnowledgeSystem.BookRootId.Should().Be(bookRootId);
+        result.KnowledgeSystem.KnowledgePoints.Should().BeEmpty();
         // 当没有文档时，Tree 可能为 null
-        if (result.Tree != null)
+        if (result.KnowledgeSystem.Tree != null)
         {
-            result.Tree.Id.Should().Be("root");
+            result.KnowledgeSystem.Tree.Id.Should().Be("root");
         }
     }
 
@@ -138,7 +134,8 @@ public class KnowledgeBuildingTests
                 {
                     Title = "Test KP",
                     Importance = 0.5f,
-                    SnippetIds = new List<string> { "snippet_1" }
+                    SnippetIds = new List<string> { "snippet_1" },
+                    Type = "concept"
                 }
             }
         };
@@ -182,7 +179,8 @@ public class KnowledgeBuildingTests
                     Title = "核心概念A",
                     ChapterPath = new List<string> { "第一章", "第一节" },
                     Importance = 0.8f,
-                    SnippetIds = new List<string> { "snippet_1" }
+                    SnippetIds = new List<string> { "snippet_1" },
+                    Type = "concept"
                 },
                 new KnowledgePointDto
                 {
@@ -190,7 +188,8 @@ public class KnowledgeBuildingTests
                     Title = "核心概念B",
                     ChapterPath = new List<string> { "第一章", "第二节" },
                     Importance = 0.6f,
-                    SnippetIds = new List<string> { "snippet_2" }
+                    SnippetIds = new List<string> { "snippet_2" },
+                    Type = "concept"
                 }
             }
         };
@@ -202,51 +201,13 @@ public class KnowledgeBuildingTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(kpResponse);
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSource(It.IsAny<string>()))
-            .Returns((string id) => new SourceSnippet { SnippetId = id, Content = "Test content" });
-
         // Act
         var result = await _knowledgeBuilder.BuildAsync(bookRootId, rootPath, CancellationToken.None);
 
         // Assert
-        result.Tree.Should().NotBeNull();
-        result.Tree!.Id.Should().Be("root");
-        result.Tree.Children.Should().NotBeEmpty();
-    }
-
-    [Fact]
-    public async Task BuildAsync_ShouldInsertDocumentsIntoRag()
-    {
-        // Arrange
-        var bookRootId = "test_book";
-        var rootPath = "/test/path";
-
-        var testDocuments = CreateTestDocuments();
-        _scannerServiceMock
-            .Setup(s => s.ScanAsync(rootPath, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(testDocuments);
-
-        var kpResponse = new KnowledgePointsResponse
-        {
-            SchemaVersion = "1.0",
-            KnowledgePoints = new List<KnowledgePointDto>()
-        };
-
-        _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<KnowledgePointsResponse>(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(kpResponse);
-
-        // Act
-        await _knowledgeBuilder.BuildAsync(bookRootId, rootPath, CancellationToken.None);
-
-        // Assert
-        _ragServiceMock.Verify(
-            s => s.InsertAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object>>()),
-            Times.AtLeastOnce);
+        result.KnowledgeSystem.Tree.Should().NotBeNull();
+        result.KnowledgeSystem.Tree!.Id.Should().Be("root");
+        result.KnowledgeSystem.Tree.Children.Should().NotBeEmpty();
     }
 
     [Fact]
@@ -272,10 +233,10 @@ public class KnowledgeBuildingTests
         var result = await _knowledgeBuilder.BuildAsync(bookRootId, rootPath, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.BookRootId.Should().Be(bookRootId);
+        result.KnowledgeSystem.Should().NotBeNull();
+        result.KnowledgeSystem.BookRootId.Should().Be(bookRootId);
         // 当 LLM 失败时，ExtractKnowledgePointsAsync 会返回空列表
-        result.KnowledgePoints.Should().NotBeNull();
+        result.KnowledgeSystem.KnowledgePoints.Should().NotBeNull();
     }
 
     [Fact]
@@ -300,7 +261,8 @@ public class KnowledgeBuildingTests
                     Title = "Test KP",
                     ChapterPath = new List<string> { "第一章" },
                     Importance = 0.5f,
-                    SnippetIds = new List<string> { "snippet_1", "snippet_2" }
+                    SnippetIds = new List<string> { "snippet_1", "snippet_2" },
+                    Type = "concept"
                 }
             }
         };
@@ -312,15 +274,11 @@ public class KnowledgeBuildingTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(kpResponse);
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSource(It.IsAny<string>()))
-            .Returns((string id) => new SourceSnippet { SnippetId = id, Content = $"Content for {id}" });
-
         // Act
         var result = await _knowledgeBuilder.BuildAsync(bookRootId, rootPath, CancellationToken.None);
 
         // Assert
-        result.Snippets.Should().NotBeEmpty();
+        result.KnowledgeSystem.Snippets.Should().NotBeEmpty();
     }
 
     private static List<Document> CreateTestDocuments()
@@ -338,15 +296,11 @@ public class KnowledgeBuildingTests
                     {
                         SectionId = "section_1",
                         HeadingPath = new List<string> { "第一章" },
-                        Paragraphs = new List<Paragraph>
-                        {
-                            new Paragraph
-                            {
-                                ParagraphId = "p_1",
-                                Content = "这是第一章的内容",
-                                Type = ParagraphType.Text
-                            }
-                        }
+                        StartLine = 0,
+                        EndLine = 100,
+                        OriginalLength = 1000,
+                        EffectiveLength = 800,
+                        FilteredLength = 200
                     }
                 }
             }

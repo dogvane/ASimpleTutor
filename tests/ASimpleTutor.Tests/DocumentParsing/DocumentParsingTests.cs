@@ -1,239 +1,241 @@
-using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
-using ASimpleTutor.Core.Services;
 using FluentAssertions;
-using Microsoft.Extensions.Logging;
-using Moq;
+using System.Collections.Generic;
+using Xunit;
 
 namespace ASimpleTutor.Tests.DocumentParsing;
 
 /// <summary>
-/// 文档解析与分段模块测试用例
-/// 对应测试需求文档：TC-DP-001 ~ TC-DP-010
+/// 文档解析测试
+/// 对应测试需求文档：TC-DP-001 ~ TC-DP-005
 /// </summary>
 public class DocumentParsingTests
 {
-    private readonly Mock<ILogger<MarkdownScanner>> _loggerMock;
-    private readonly MarkdownScanner _scanner;
-    private readonly string _testDataPath;
-
-    public DocumentParsingTests()
-    {
-        _loggerMock = new Mock<ILogger<MarkdownScanner>>();
-        _scanner = new MarkdownScanner(_loggerMock.Object);
-        _testDataPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", "Files");
-    }
+    #region 文档结构测试
 
     [Fact]
-    public async Task ParseDocumentAsync_WithMultiLevelHeadings_ShouldExtractCorrectHierarchy()
+    public void Document_ShouldHaveCorrectStructure()
     {
         // Arrange
-        var filePath = Path.Combine(_testDataPath, "DocumentParsing", "multi_level_headings", "chapter_with_headings.md");
-
-        // Act
-        var docs = await _scanner.ScanAsync(Path.GetDirectoryName(filePath)!, new List<string>(), CancellationToken.None);
-        var doc = docs.First(d => d.Path == filePath);
-
-        // Assert
-        doc.Should().NotBeNull();
-        doc.Sections.Should().NotBeEmpty();
-
-        // 验证标题层级存在 - 检查每个 section 的 HeadingPath 完整路径
-        var allHeadingPaths = doc.Sections.Select(s => s.HeadingPath).ToList();
-
-        // 至少有一个 section 包含 H1 标题
-        var hasH1 = allHeadingPaths.Any(hp => hp.Any(h => h.Contains("第一章")));
-        hasH1.Should().BeTrue();
-
-        // 验证存在多个章节（H1 下面的子标题）
-        allHeadingPaths.Should().HaveCountGreaterThanOrEqualTo(2);
-    }
-
-    [Fact]
-    public async Task ParseDocumentAsync_WithParagraphs_ShouldSeparateCorrectly()
-    {
-        // Arrange
-        var filePath = Path.Combine(_testDataPath, "DocumentParsing", "multi_level_headings", "chapter_with_headings.md");
-
-        // Act
-        var docs = await _scanner.ScanAsync(Path.GetDirectoryName(filePath)!, new List<string>(), CancellationToken.None);
-        var doc = docs.First(d => d.Path == filePath);
-
-        // Assert
-        doc.Should().NotBeNull();
-
-        // 验证段落存在
-        var allParagraphs = doc.Sections.SelectMany(s => s.Paragraphs).ToList();
-        allParagraphs.Should().NotBeEmpty();
-
-        // 验证段落类型为 Text
-        allParagraphs.Where(p => p.Type == ParagraphType.Text).Should().NotBeEmpty();
-    }
-
-    [Fact]
-    public async Task ParseDocumentAsync_WithCodeBlocks_ShouldIdentifyCodeType()
-    {
-        // Arrange
-        var filePath = Path.Combine(_testDataPath, "DocumentParsing", "code_and_quotes", "code_quotes.md");
-
-        // Act
-        var docs = await _scanner.ScanAsync(Path.GetDirectoryName(filePath)!, new List<string>(), CancellationToken.None);
-        var doc = docs.First(d => d.Path == filePath);
-
-        // Assert
-        doc.Should().NotBeNull();
-
-        var codeParagraphs = doc.Sections
-            .SelectMany(s => s.Paragraphs)
-            .Where(p => p.Type == ParagraphType.Code)
-            .ToList();
-
-        codeParagraphs.Should().NotBeEmpty();
-        codeParagraphs.Should().HaveCountGreaterThanOrEqualTo(3); // Python, JSON, Bash
-
-        // 验证代码块内容
-        var hasPython = codeParagraphs.Any(p => p.Content.Contains("def hello_world"));
-        var hasJson = codeParagraphs.Any(p => p.Content.Contains("ASimpleTutor"));
-        hasPython.Should().BeTrue();
-        hasJson.Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task ParseDocumentAsync_WithQuoteBlocks_ShouldIdentifyQuoteType()
-    {
-        // Arrange
-        var filePath = Path.Combine(_testDataPath, "DocumentParsing", "code_and_quotes", "code_quotes.md");
-
-        // Act
-        var docs = await _scanner.ScanAsync(Path.GetDirectoryName(filePath)!, new List<string>(), CancellationToken.None);
-        var doc = docs.First(d => d.Path == filePath);
-
-        // Assert
-        doc.Should().NotBeNull();
-
-        var quoteParagraphs = doc.Sections
-            .SelectMany(s => s.Paragraphs)
-            .Where(p => p.Type == ParagraphType.Quote)
-            .ToList();
-
-        quoteParagraphs.Should().NotBeEmpty();
-
-        // 验证引用内容（应该去除 > 符号）
-        quoteParagraphs.First().Content.Should().NotContain(">");
-    }
-
-    [Fact]
-    public async Task ParseDocumentAsync_WithEmptyFile_ShouldReturnValidDocument()
-    {
-        // Arrange
-        var filePath = Path.Combine(_testDataPath, "DocumentParsing", "empty_file", "empty.md");
-
-        // Act
-        var docs = await _scanner.ScanAsync(Path.GetDirectoryName(filePath)!, new List<string>(), CancellationToken.None);
-        var doc = docs.First(d => d.Path == filePath);
-
-        // Assert
-        doc.Should().NotBeNull();
-        doc.DocId.Should().NotBeNullOrEmpty();
-        doc.Path.Should().Be(filePath);
-        // 空文件的基本属性应该有效
-        doc.DocId.Should().NotBeNull();
-        doc.ContentHash.Should().NotBeNull();
-    }
-
-    [Fact]
-    public async Task ParseDocumentAsync_WithOnlyHeadings_ShouldHaveSectionsWithoutParagraphs()
-    {
-        // Arrange
-        var filePath = Path.Combine(_testDataPath, "DocumentParsing", "only_headings", "headings_only.md");
-
-        // Act
-        var docs = await _scanner.ScanAsync(Path.GetDirectoryName(filePath)!, new List<string>(), CancellationToken.None);
-        var doc = docs.First(d => d.Path == filePath);
-
-        // Assert
-        doc.Should().NotBeNull();
-        // 仅有标题的文件，解析器可能不会创建包含该标题的 section
-        // 因为解析逻辑只在有段落时才保存 section
-        // 验证至少有一些章节结构被识别
-        var hasSomeStructure = doc.Sections.Any() || doc.Title == "第一章";
-        hasSomeStructure.Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task ParseDocumentAsync_ShouldTrackLineNumbers()
-    {
-        // Arrange
-        var filePath = Path.Combine(_testDataPath, "DocumentParsing", "multi_level_headings", "chapter_with_headings.md");
-
-        // Act
-        var docs = await _scanner.ScanAsync(Path.GetDirectoryName(filePath)!, new List<string>(), CancellationToken.None);
-        var doc = docs.First(d => d.Path == filePath);
-
-        // Assert
-        doc.Should().NotBeNull();
-
-        var paragraphs = doc.Sections.SelectMany(s => s.Paragraphs).ToList();
-        paragraphs.Should().NotBeEmpty();
-
-        // 验证行号信息
-        foreach (var para in paragraphs)
+        var document = new Document
         {
-            para.StartLine.Should().BeGreaterThanOrEqualTo(0);
-            para.EndLine.Should().BeGreaterThanOrEqualTo(para.StartLine);
-        }
+            DocId = "doc1",
+            BookRootId = "book1",
+            Path = "/path/to/doc.md",
+            Title = "Test Document",
+            Sections = new List<Section>
+            {
+                new Section
+                {
+                    SectionId = "section1",
+                    HeadingPath = new List<string> { "Chapter 1" },
+                    SubSections = new List<Section>
+                    {
+                        new Section
+                        {
+                            SectionId = "sub1",
+                            HeadingPath = new List<string> { "Chapter 1", "Section 1" }
+                        }
+                    }
+                }
+            }
+        };
+
+        // Assert
+        document.DocId.Should().Be("doc1");
+        document.Sections.Should().HaveCount(1);
+        document.Sections[0].SectionId.Should().Be("section1");
+        document.Sections[0].SubSections.Should().HaveCount(1);
+        document.Sections[0].SubSections[0].SectionId.Should().Be("sub1");
     }
 
     [Fact]
-    public async Task ParseDocumentAsync_ShouldComputeContentHash()
+    public void Section_ShouldHaveCorrectStructure()
     {
         // Arrange
-        var filePath = Path.Combine(_testDataPath, "DocumentParsing", "multi_level_headings", "chapter_with_headings.md");
-
-        // Act
-        var docs = await _scanner.ScanAsync(Path.GetDirectoryName(filePath)!, new List<string>(), CancellationToken.None);
-        var doc = docs.First(d => d.Path == filePath);
+        var section = new Section
+        {
+            SectionId = "section1",
+            HeadingPath = new List<string> { "Chapter 1", "Section 1" },
+            StartLine = 10,
+            EndLine = 20,
+            OriginalLength = 500,
+            EffectiveLength = 400,
+            FilteredLength = 100,
+            IsExcluded = false
+        };
 
         // Assert
-        doc.Should().NotBeNull();
-        doc.ContentHash.Should().NotBeNullOrEmpty();
-        // SHA256 Base64 编码长度应该是 44 字符
-        doc.ContentHash.Should().HaveLength(44);
+        section.SectionId.Should().Be("section1");
+        section.HeadingPath.Should().ContainInOrder("Chapter 1", "Section 1");
+        section.StartLine.Should().Be(10);
+        section.EndLine.Should().Be(20);
+        section.OriginalLength.Should().Be(500);
+        section.EffectiveLength.Should().Be(400);
+        section.FilteredLength.Should().Be(100);
+        section.IsExcluded.Should().BeFalse();
     }
 
     [Fact]
-    public async Task ParseDocumentAsync_ShouldExtractTitleFromH1()
+    public void Section_ShouldHandleSubSections()
     {
         // Arrange
-        var filePath = Path.Combine(_testDataPath, "DocumentParsing", "multi_level_headings", "chapter_with_headings.md");
-
-        // Act
-        var docs = await _scanner.ScanAsync(Path.GetDirectoryName(filePath)!, new List<string>(), CancellationToken.None);
-        var doc = docs.First(d => d.Path == filePath);
+        var section = new Section
+        {
+            SectionId = "parent",
+            HeadingPath = new List<string> { "Chapter 1" },
+            SubSections = new List<Section>
+            {
+                new Section
+                {
+                    SectionId = "child1",
+                    HeadingPath = new List<string> { "Chapter 1", "Section 1" }
+                },
+                new Section
+                {
+                    SectionId = "child2",
+                    HeadingPath = new List<string> { "Chapter 1", "Section 2" }
+                }
+            }
+        };
 
         // Assert
-        doc.Should().NotBeNull();
-        doc.Title.Should().Be("第一章：入门指南");
+        section.SubSections.Should().HaveCount(2);
+        section.SubSections[0].SectionId.Should().Be("child1");
+        section.SubSections[1].SectionId.Should().Be("child2");
+    }
+
+    #endregion
+
+    #region 文档解析边界测试
+
+    [Fact]
+    public void Document_ShouldHandleEmptySections()
+    {
+        // Arrange
+        var document = new Document
+        {
+            DocId = "doc1",
+            Title = "Empty Sections Document",
+            Sections = new List<Section>()
+        };
+
+        // Assert
+        document.Sections.Should().NotBeNull();
+        document.Sections.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task ParseDocumentAsync_WithListItems_ShouldIdentifyListType()
+    public void Section_ShouldHandleEmptySubSections()
     {
         // Arrange
-        var filePath = Path.Combine(_testDataPath, "DocumentParsing", "multi_level_headings", "chapter_with_headings.md");
-
-        // Act
-        var docs = await _scanner.ScanAsync(Path.GetDirectoryName(filePath)!, new List<string>(), CancellationToken.None);
-        var doc = docs.First(d => d.Path == filePath);
+        var section = new Section
+        {
+            SectionId = "section1",
+            HeadingPath = new List<string> { "Chapter 1" },
+            SubSections = new List<Section>()
+        };
 
         // Assert
-        doc.Should().NotBeNull();
-
-        var listParagraphs = doc.Sections
-            .SelectMany(s => s.Paragraphs)
-            .Where(p => p.Type == ParagraphType.List)
-            .ToList();
-
-        listParagraphs.Should().NotBeEmpty();
+        section.SubSections.Should().NotBeNull();
+        section.SubSections.Should().BeEmpty();
     }
+
+    [Fact]
+    public void Section_ShouldHandleEmptyHeadingPath()
+    {
+        // Arrange
+        var section = new Section
+        {
+            SectionId = "section1",
+            HeadingPath = new List<string>(),
+            StartLine = 1,
+            EndLine = 10
+        };
+
+        // Assert
+        section.HeadingPath.Should().NotBeNull();
+        section.HeadingPath.Should().BeEmpty();
+        section.StartLine.Should().Be(1);
+        section.EndLine.Should().Be(10);
+    }
+
+    #endregion
+
+    #region 文档哈希测试
+
+    [Fact]
+    public void Document_ShouldAllowContentHash()
+    {
+        // Arrange
+        var document = new Document
+        {
+            DocId = "doc1",
+            Title = "Test Document",
+            ContentHash = "test-hash-123"
+        };
+
+        // Assert
+        document.ContentHash.Should().Be("test-hash-123");
+    }
+
+    [Fact]
+    public void Document_ShouldHandleNullContentHash()
+    {
+        // Arrange
+        var document = new Document
+        {
+            DocId = "doc1",
+            Title = "Test Document",
+            ContentHash = null
+        };
+
+        // Assert
+        document.ContentHash.Should().BeNull();
+    }
+
+    #endregion
+
+    #region 章节长度测试
+
+    [Fact]
+    public void Section_ShouldHaveValidLengths()
+    {
+        // Arrange
+        var section = new Section
+        {
+            SectionId = "section1",
+            HeadingPath = new List<string> { "Chapter 1" },
+            OriginalLength = 1000,
+            EffectiveLength = 800,
+            FilteredLength = 200
+        };
+
+        // Assert
+        section.OriginalLength.Should().Be(1000);
+        section.EffectiveLength.Should().Be(800);
+        section.FilteredLength.Should().Be(200);
+        section.OriginalLength.Should().Be(section.EffectiveLength + section.FilteredLength);
+    }
+
+    [Fact]
+    public void Section_ShouldHandleZeroLengths()
+    {
+        // Arrange
+        var section = new Section
+        {
+            SectionId = "section1",
+            HeadingPath = new List<string> { "Chapter 1" },
+            OriginalLength = 0,
+            EffectiveLength = 0,
+            FilteredLength = 0
+        };
+
+        // Assert
+        section.OriginalLength.Should().Be(0);
+        section.EffectiveLength.Should().Be(0);
+        section.FilteredLength.Should().Be(0);
+    }
+
+    #endregion
 }

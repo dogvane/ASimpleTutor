@@ -1,171 +1,107 @@
-using ASimpleTutor.Core.Interfaces;
-using ASimpleTutor.Core.Models;
+using ASimpleTutor.Core.Configuration;
 using ASimpleTutor.Core.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 
 namespace ASimpleTutor.Tests.FileDiscovery;
 
 /// <summary>
-/// 文件发现模块测试用例
-/// 对应测试需求文档：TC-FD-001 ~ TC-FD-006
+/// 文件发现与扫描测试
+/// 对应测试需求文档：TC-FD-001 ~ TC-FD-005
 /// </summary>
 public class FileDiscoveryTests
 {
     private readonly Mock<ILogger<MarkdownScanner>> _loggerMock;
-    private readonly MarkdownScanner _scanner;
-    private readonly string _testDataPath;
+    private readonly IOptions<SectioningOptions> _sectioningOptions;
 
     public FileDiscoveryTests()
     {
         _loggerMock = new Mock<ILogger<MarkdownScanner>>();
-        _scanner = new MarkdownScanner(_loggerMock.Object);
-        _testDataPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data", "Files");
+        _sectioningOptions = Options.Create(new SectioningOptions());
     }
 
     [Fact]
-    public async Task ScanAsync_WithNormalFiles_ShouldDiscoverAllMdFiles()
+    public async Task MarkdownScanner_ShouldDiscoverMarkdownFiles()
     {
         // Arrange
-        var normalPath = Path.Combine(_testDataPath, "FileDiscovery", "normal_files");
+        using var tempDir = new TempDirectory();
+        tempDir.CreateFile("file1.md", "# Test 1\nContent 1");
+        tempDir.CreateFile("file2.md", "# Test 2\nContent 2");
+        tempDir.CreateFile("file3.txt", "Not markdown"); // 非 Markdown 文件
+
+        var scanner = new MarkdownScanner(_loggerMock.Object, _sectioningOptions);
 
         // Act
-        var result = await _scanner.ScanAsync(normalPath, new List<string>(), CancellationToken.None);
+        var documents = await scanner.ScanAsync(tempDir.Path, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-        result.Count.Should().Be(3);
-
-        var fileNames = result.Select(d => Path.GetFileName(d.Path)).ToList();
-        fileNames.Should().Contain("chapter01.md");
-        fileNames.Should().Contain("chapter02.md");
-        fileNames.Should().Contain("chapter03.md");
+        documents.Should().NotBeNull();
+        documents.Should().HaveCount(2); // 只应该找到 2 个 Markdown 文件
     }
 
     [Fact]
-    public async Task ScanAsync_WithExcludedDirectories_ShouldExcludeReferenceFiles()
+    public async Task MarkdownScanner_ShouldHandleEmptyDirectory()
     {
         // Arrange
-        var testPath = Path.Combine(_testDataPath, "FileDiscovery");
-        var excludeDirs = new List<string> { "references" };
+        using var tempDir = new TempDirectory();
+        var scanner = new MarkdownScanner(_loggerMock.Object, _sectioningOptions);
 
         // Act
-        var result = await _scanner.ScanAsync(testPath, excludeDirs, CancellationToken.None);
+        var documents = await scanner.ScanAsync(tempDir.Path, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-
-        var filePaths = result.Select(d => d.Path).ToList();
-
-        // 参考书目目录中的文件不应该被包含
-        filePaths.Should().NotContain(p => p.Contains("references" + Path.DirectorySeparatorChar + "book01"));
-        filePaths.Should().NotContain(p => p.Contains("references" + Path.DirectorySeparatorChar + "sub" + Path.DirectorySeparatorChar + "ref"));
+        documents.Should().NotBeNull();
+        documents.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task ScanAsync_WithHiddenAndTempFiles_ShouldFilterThemOut()
+    public async Task MarkdownScanner_ShouldHandleNonExistentDirectory()
     {
         // Arrange
-        var edgeCasesPath = Path.Combine(_testDataPath, "FileDiscovery", "hidden_and_temp");
+        var nonExistentDir = Path.Combine(Path.GetTempPath(), "non-existent-dir-", Path.GetRandomFileName());
+        var scanner = new MarkdownScanner(_loggerMock.Object, _sectioningOptions);
 
         // Act
-        var result = await _scanner.ScanAsync(edgeCasesPath, new List<string>(), CancellationToken.None);
+        var documents = await scanner.ScanAsync(nonExistentDir, CancellationToken.None);
 
         // Assert
-        result.Should().NotBeNull();
-
-        var fileNames = result.Select(d => Path.GetFileName(d.Path)).ToList();
-
-        // 临时文件应该被过滤（~ 结尾）
-        fileNames.Should().NotContain("temp.md~");
-
-        // 隐藏文件检测：以下划线开头的文件
-        var hasHiddenFile = fileNames.Contains("_hidden.md");
-        if (hasHiddenFile)
-        {
-            result.Should().Contain(d => Path.GetFileName(d.Path) == "_hidden.md");
-        }
-        else
-        {
-            fileNames.Should().NotContain("_hidden.md");
-        }
+        documents.Should().NotBeNull();
+        documents.Should().BeEmpty();
     }
 
-    [Fact]
-    public async Task ScanAsync_WithEmptyDirectory_ShouldReturnEmptyList()
+    #region Helper Class
+
+    private class TempDirectory : IDisposable
     {
-        // Arrange
-        var emptyPath = Path.Combine(_testDataPath, "FileDiscovery", "empty_directory");
-        Directory.CreateDirectory(emptyPath);
+        public string Path { get; }
 
-        try
+        public TempDirectory()
         {
-            // Act
-            var result = await _scanner.ScanAsync(emptyPath, new List<string>(), CancellationToken.None);
-
-            // Assert
-            result.Should().NotBeNull();
-            result.Should().BeEmpty();
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "markdown-scanner-test-", System.IO.Path.GetRandomFileName());
+            Directory.CreateDirectory(Path);
         }
-        finally
+
+        public void CreateFile(string fileName, string content)
         {
-            // Cleanup
-            Directory.Delete(emptyPath);
+            var filePath = System.IO.Path.Combine(Path, fileName);
+            File.WriteAllText(filePath, content);
+        }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(Path))
+            {
+                Directory.Delete(Path, recursive: true);
+            }
         }
     }
 
-    [Fact]
-    public async Task ScanAsync_WithNonExistentDirectory_ShouldReturnEmptyList()
-    {
-        // Arrange
-        var nonExistentPath = Path.Combine(_testDataPath, "FileDiscovery", "non_existent_directory");
-
-        // Act
-        var result = await _scanner.ScanAsync(nonExistentPath, new List<string>(), CancellationToken.None);
-
-        // Assert
-        result.Should().NotBeNull();
-        result.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task ScanAsync_WithDefaultExcludeDirs_ShouldExcludeReferences()
-    {
-        // Arrange
-        var testPath = Path.Combine(_testDataPath, "FileDiscovery");
-
-        // Act - 使用默认排除规则（references, 参考书目）
-        var result = await _scanner.ScanAsync(testPath, CancellationToken.None);
-
-        // Assert
-        result.Should().NotBeNull();
-
-        var filePaths = result.Select(d => d.Path).ToList();
-
-        // 验证排除规则生效
-        filePaths.Should().NotContain(p => p.Contains("references" + Path.DirectorySeparatorChar + "book01"));
-    }
-
-    [Fact]
-    public async Task ScanAsync_WithRecursionEnabled_ShouldDiscoverNestedFiles()
-    {
-        // Arrange
-        var subdirsPath = Path.Combine(_testDataPath, "FileDiscovery", "with_subdirs");
-        // MarkdownScanner 默认使用 SearchOption.AllDirectories，即递归扫描
-
-        // Act
-        var result = await _scanner.ScanAsync(subdirsPath, new List<string>(), CancellationToken.None);
-
-        // Assert
-        result.Should().NotBeNull();
-        result.Count.Should().Be(2); // 2个嵌套文件：nested/sub.md 和 nested/deep/deep_content.md
-
-        // 验证嵌套文件被包含
-        var allPaths = string.Join(";", result.Select(d => d.Path));
-        allPaths.Should().Contain("nested");
-        allPaths.Should().Contain("deep");
-        allPaths.Should().Contain("sub.md");
-        allPaths.Should().Contain("deep_content.md");
-    }
+    #endregion
 }

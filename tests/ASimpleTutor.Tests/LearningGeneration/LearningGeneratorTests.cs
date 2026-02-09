@@ -1,10 +1,13 @@
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
+using ASimpleTutor.Core.Models.Dto;
 using ASimpleTutor.Core.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ASimpleTutor.Tests.LearningGeneration;
 
@@ -14,22 +17,20 @@ namespace ASimpleTutor.Tests.LearningGeneration;
 /// </summary>
 public class LearningGeneratorTests
 {
-    private readonly Mock<ISimpleRagService> _ragServiceMock;
-    private readonly Mock<ISourceTracker> _sourceTrackerMock;
     private readonly Mock<ILLMService> _llmServiceMock;
     private readonly Mock<ILogger<LearningGenerator>> _loggerMock;
+    private readonly KnowledgeSystemStore _knowledgeSystemStore;
     private readonly LearningGenerator _generator;
 
     public LearningGeneratorTests()
     {
-        _ragServiceMock = new Mock<ISimpleRagService>();
-        _sourceTrackerMock = new Mock<ISourceTracker>();
         _llmServiceMock = new Mock<ILLMService>();
         _loggerMock = new Mock<ILogger<LearningGenerator>>();
+        var knowledgeSystemStoreLoggerMock = new Mock<ILogger<KnowledgeSystemStore>>();
+        _knowledgeSystemStore = new KnowledgeSystemStore(knowledgeSystemStoreLoggerMock.Object, "test-data");
 
         _generator = new LearningGenerator(
-            _ragServiceMock.Object,
-            _sourceTrackerMock.Object,
+            _knowledgeSystemStore,
             _llmServiceMock.Object,
             _loggerMock.Object);
     }
@@ -43,13 +44,20 @@ public class LearningGeneratorTests
         var kp = CreateTestKnowledgePoint();
         var snippets = CreateTestSnippets();
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(snippets);
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        kp.BookRootId = "book_001_test9"; // 使用唯一的 BookRootId 避免文件被占用
+        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
@@ -71,13 +79,20 @@ public class LearningGeneratorTests
         var kp = CreateTestKnowledgePoint();
         var snippets = CreateTestSnippets();
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(snippets);
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        kp.BookRootId = "book_001_test11"; // 使用唯一的 BookRootId 避免文件被占用
+        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
@@ -98,13 +113,20 @@ public class LearningGeneratorTests
         var kp = CreateTestKnowledgePoint();
         var snippets = CreateTestSnippets();
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(snippets);
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        kp.BookRootId = "book_001_test12"; // 使用唯一的 BookRootId 避免文件被占用
+        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
@@ -126,13 +148,20 @@ public class LearningGeneratorTests
         var kp = CreateTestKnowledgePoint();
         var snippets = CreateTestSnippets();
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(snippets);
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        kp.BookRootId = "book_001_test13"; // 使用唯一的 BookRootId 避免文件被占用
+        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
@@ -153,13 +182,20 @@ public class LearningGeneratorTests
         var kp = CreateTestKnowledgePoint();
         var snippets = CreateTestSnippets();
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(snippets);
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        kp.BookRootId = "book_001_test14"; // 使用唯一的 BookRootId 避免文件被占用
+        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
@@ -185,13 +221,20 @@ public class LearningGeneratorTests
         var kp = CreateTestKnowledgePoint();
         var snippets = CreateTestSnippets();
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(snippets);
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        kp.BookRootId = "book_001_test15"; // 使用唯一的 BookRootId 避免文件被占用
+        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
@@ -217,13 +260,18 @@ public class LearningGeneratorTests
         var kp = CreateTestKnowledgePoint();
         var snippets = CreateTestSnippets();
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(snippets);
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
@@ -246,16 +294,22 @@ public class LearningGeneratorTests
         {
             KpId = "kp_empty",
             Title = "测试知识点",
-            SnippetIds = new List<string>()
+            SnippetIds = new List<string>(),
+            BookRootId = "book_001"
         };
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(new List<SourceSnippet>());
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = new Dictionary<string, SourceSnippet>()
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
@@ -279,12 +333,17 @@ public class LearningGeneratorTests
         var kp = CreateTestKnowledgePoint();
         var snippets = CreateTestSnippets();
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(snippets);
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
@@ -306,12 +365,17 @@ public class LearningGeneratorTests
         var kp = CreateTestKnowledgePoint();
         var snippets = CreateTestSnippets();
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(snippets);
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
@@ -333,12 +397,17 @@ public class LearningGeneratorTests
         var kp = CreateTestKnowledgePoint();
         var snippets = CreateTestSnippets();
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(snippets);
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
@@ -359,16 +428,21 @@ public class LearningGeneratorTests
         var kp = CreateTestKnowledgePoint();
         var snippets = CreateTestSnippets();
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(snippets);
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync((LearningContentResponse?)null);
+            .ReturnsAsync((LearningContentDto?)null);
 
         // Act
         var result = await _generator.GenerateAsync(kp, CancellationToken.None);
@@ -392,16 +466,22 @@ public class LearningGeneratorTests
             Title = "",
             ChapterPath = new List<string> { "第一章" },
             Importance = 0.5f,
-            SnippetIds = new List<string> { "snippet_001" }
+            SnippetIds = new List<string> { "snippet_001" },
+            BookRootId = "book_001"
         };
         var snippets = CreateTestSnippets();
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(snippets);
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
@@ -425,12 +505,18 @@ public class LearningGeneratorTests
             Title = "无片段知识点",
             ChapterPath = new List<string> { "第一章" },
             Importance = 0.5f,
-            SnippetIds = new List<string>()
+            SnippetIds = new List<string>(),
+            BookRootId = "book_001"
         };
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<string[]>()))
-            .Returns(new List<SourceSnippet>());
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = new Dictionary<string, SourceSnippet>()
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         // Act
         var result = await _generator.GenerateAsync(kp, CancellationToken.None);
@@ -451,13 +537,18 @@ public class LearningGeneratorTests
         var kp = CreateTestKnowledgePoint();
         var snippets = CreateTestSnippets();
 
-        _sourceTrackerMock
-            .Setup(s => s.GetSources(It.IsAny<IEnumerable<string>>()))
-            .Returns(snippets);
+        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
+        // 我们需要先保存知识系统，然后才能加载它
+        var knowledgeSystem = new KnowledgeSystem
+        {
+            BookRootId = kp.BookRootId,
+            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentResponse>(
+            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>()))
@@ -485,8 +576,7 @@ public class LearningGeneratorTests
             Aliases = new List<string> { "MD", "标记语言" },
             ChapterPath = new List<string> { "第一章", "1.1 基础概念" },
             Importance = 0.8f,
-            SnippetIds = new List<string> { "snippet_001", "snippet_002" },
-            Relations = new List<KnowledgeRelation>()
+            SnippetIds = new List<string> { "snippet_001", "snippet_002" }
         };
     }
 
@@ -519,9 +609,9 @@ public class LearningGeneratorTests
         };
     }
 
-    private static LearningContentResponse CreateValidLLMResponse()
+    private static LearningContentDto CreateValidLLMResponse()
     {
-        return new LearningContentResponse
+        return new LearningContentDto
         {
             Summary = new Summary
             {
