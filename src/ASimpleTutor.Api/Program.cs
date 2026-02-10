@@ -143,12 +143,11 @@ async Task CheckAllSavedKnowledgeSystemsAsync()
             if (knowledgeSystem != null)
             {
                 var kpCount = knowledgeSystem.KnowledgePoints.Count;
-                var snippetCount = knowledgeSystem.Snippets.Count;
                 var docCount = documents?.Count ?? 0;
 
-                logger.LogInformation("知识点扫描结果状态: 书籍中心={BookHubId}, 知识点数量={KpCount}, 原文片段数量={SnippetCount}, 文档数量={DocCount}, 状态=完整", 
-                    bookHubId, kpCount, snippetCount, docCount);
-                Console.WriteLine($"[启动检查] 书籍中心={bookHubId}, 知识点数量={kpCount}, 原文片段数量={snippetCount}, 文档数量={docCount}, 状态=完整");
+                logger.LogInformation("知识点扫描结果状态: 书籍中心={BookHubId}, 知识点数量={KpCount}, 文档数量={DocCount}, 状态=完整", 
+                    bookHubId, kpCount, docCount);
+                Console.WriteLine($"[启动检查] 书籍中心={bookHubId}, 知识点数量={kpCount}, 文档数量={docCount}, 状态=完整");
             }
             else
             {

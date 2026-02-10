@@ -39,52 +39,23 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
             // 从 KnowledgeSystemStore 中加载原文片段
             var bookHubId = kp.BookHubId;
             _logger.LogInformation("知识点 BookHubId: {BookHubId}", bookHubId);
-            _logger.LogInformation("知识点 SnippetIds 数量: {SnippetCount}", kp.SnippetIds.Count);
-            if (kp.SnippetIds.Count > 0)
-            {
-                _logger.LogInformation("知识点 SnippetIds: {SnippetIds}", string.Join(", ", kp.SnippetIds));
-            }
+            _logger.LogInformation("知识点 ChapterPath: {ChapterPath}", string.Join(" > ", kp.ChapterPath));
 
             if (!string.IsNullOrEmpty(bookHubId))
             {
                 // 从存储中加载知识系统
                 var loadResult = await _knowledgeSystemStore.LoadAsync(bookHubId, cancellationToken);
-                if (loadResult.KnowledgeSystem != null)
+                if (loadResult.Documents != null && loadResult.Documents.Count > 0)
                 {
-                    _logger.LogInformation("从 KnowledgeSystemStore 加载知识系统成功: {BookHubId}, 知识点数量: {KpCount}, 原文片段数量: {SnippetCount}", 
-                        bookHubId, loadResult.KnowledgeSystem.KnowledgePoints.Count, loadResult.KnowledgeSystem.Snippets.Count);
+                    _logger.LogInformation("从 KnowledgeSystemStore 加载文档成功: {BookHubId}, 文档数量: {DocCount}", 
+                        bookHubId, loadResult.Documents.Count);
                     
-                    // 尝试从知识系统的 Snippets 中获取原文片段
-                    var knowledgeSystemSnippets = kp.SnippetIds
-                        .Select(id => loadResult.KnowledgeSystem.Snippets.TryGetValue(id, out var snippet) ? snippet : null)
-                        .Where(s => s != null)
-                        .ToList();
-                    
-                    if (knowledgeSystemSnippets.Count > 0)
-                    {
-                        snippetTexts = string.Join("\n\n", knowledgeSystemSnippets.Select(s => s!.Content));
-                        _logger.LogInformation("从 KnowledgeSystemStore 成功加载原文片段: {KpId}, 数量: {Count}, 长度: {Length}", 
-                            kp.KpId, knowledgeSystemSnippets.Count, snippetTexts.Length);
-                    }
-                    else
-                    {
-                        // 如果找不到匹配的原文片段，尝试使用知识系统中的第一个原文片段
-                        var firstSnippet = loadResult.KnowledgeSystem.Snippets.Values.FirstOrDefault();
-                        if (firstSnippet != null)
-                        {
-                            snippetTexts = firstSnippet.Content;
-                            _logger.LogInformation("使用知识系统中的第一个原文片段: {SnippetId}, 长度: {Length}", 
-                                firstSnippet.SnippetId, snippetTexts.Length);
-                        }
-                        else
-                        {
-                            _logger.LogWarning("知识系统中没有原文片段: {BookHubId}", bookHubId);
-                        }
-                    }
+                    // 从 Document 中获取原文片段
+                    snippetTexts = await GetSnippetTextsFromDocumentsAsync(kp, loadResult.Documents, cancellationToken);
                 }
                 else
                 {
-                    _logger.LogWarning("加载知识系统失败: {BookHubId}", bookHubId);
+                    _logger.LogWarning("加载文档失败: {BookHubId}", bookHubId);
                 }
             }
             else
@@ -92,13 +63,114 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
                 _logger.LogWarning("知识点 BookHubId 为空: {KpId}", kp.KpId);
             }
 
-            return await GenerateExercisesAsync(kp, snippetTexts, count, cancellationToken);
+            return await GenerateExercisesAsync(kp, snippetTexts ?? string.Empty, count, cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "习题生成失败: {KpId}", kp.KpId);
             return new List<Exercise>();
         }
+    }
+
+    /// <summary>
+    /// 从 Document 中获取原文片段内容
+    /// </summary>
+    private async Task<string> GetSnippetTextsFromDocumentsAsync(KnowledgePoint kp, List<Document> documents, CancellationToken cancellationToken)
+    {
+        var snippetContents = new List<string>();
+
+        // 遍历所有文档，根据章节路径查找对应的章节
+        foreach (var doc in documents)
+        {
+            if (doc.DocId != kp.DocId)
+            {
+                continue;
+            }
+
+            if (doc != null && File.Exists(doc.Path))
+            {
+                try
+                {
+                    // 读取文档文件的所有行
+                    var lines = await File.ReadAllLinesAsync(doc.Path, cancellationToken);
+
+                    // 根据章节路径查找对应的章节
+                    var section = FindSectionByPath(doc.Sections, kp.ChapterPath);
+                    if (section != null && section.StartLine >= 0 && section.EndLine <= lines.Length)
+                    {
+                        // 提取章节内容
+                        var contentLines = lines.Skip(section.StartLine).Take(section.EndLine - section.StartLine);
+                        var content = string.Join("\n", contentLines);
+                        if (!string.IsNullOrEmpty(content))
+                        {
+                            snippetContents.Add(content);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "读取原文片段失败: {KpId}", kp.KpId);
+                }
+            }
+        }
+
+        return string.Join("\n\n", snippetContents);
+    }
+
+    /// <summary>
+    /// 根据章节路径查找对应的章节
+    /// </summary>
+    private Section? FindSectionByPath(List<Section> sections, List<string> path)
+    {
+        if (sections == null || sections.Count == 0 || path == null || path.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var section in sections)
+        {
+            // 检查路径是否匹配（完全匹配或部分匹配）
+            if (section.HeadingPath.Count > 0)
+            {
+                // 完全匹配
+                if (section.HeadingPath.Count == path.Count)
+                {
+                    var isMatch = true;
+                    for (int i = 0; i < path.Count; i++)
+                    {
+                        if (section.HeadingPath[i] != path[i])
+                        {
+                            isMatch = false;
+                            break;
+                        }
+                    }
+                    if (isMatch)
+                    {
+                        return section;
+                    }
+                }
+
+                // 检查子章节
+                if (section.SubSections != null && section.SubSections.Count > 0)
+                {
+                    var found = FindSectionByPath(section.SubSections, path);
+                    if (found != null)
+                    {
+                        return found;
+                    }
+                }
+            }
+            else if (section.SubSections != null && section.SubSections.Count > 0)
+            {
+                var found = FindSectionByPath(section.SubSections, path);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+        }
+
+        return null;
     }
 
     private async Task<List<Exercise>> GenerateExercisesAsync(
@@ -219,7 +291,7 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
                 var exercise = dto.ToExercise();
                 exercise.ExerciseId = $"{kp.KpId}_ex_{index}";
                 exercise.KpId = kp.KpId;
-                exercise.EvidenceSnippetIds = new List<string>(kp.SnippetIds);
+                exercise.EvidenceSnippetIds = new List<string> { string.Join(" > ", kp.ChapterPath) };
                 exercise.CreatedAt = DateTime.UtcNow;
                 return exercise;
             })
@@ -313,7 +385,7 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
                 var exercise = dto.ToExercise();
                 exercise.ExerciseId = $"{kp.KpId}_ex_{index}";
                 exercise.KpId = kp.KpId;
-                exercise.EvidenceSnippetIds = new List<string>(kp.SnippetIds);
+                exercise.EvidenceSnippetIds = new List<string> { string.Join(" > ", kp.ChapterPath) };
                 exercise.CreatedAt = DateTime.UtcNow;
                 return exercise;
             })

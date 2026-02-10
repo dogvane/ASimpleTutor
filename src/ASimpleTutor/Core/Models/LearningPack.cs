@@ -21,11 +21,6 @@ public class LearningPack
     public List<ContentLevel> Levels { get; set; } = new();
 
     /// <summary>
-    /// 关联的原文片段 ID 列表
-    /// </summary>
-    public List<string> SnippetIds { get; set; } = new();
-
-    /// <summary>
     /// 关联知识点 ID 列表
     /// </summary>
     public List<string> RelatedKpIds { get; set; } = new();

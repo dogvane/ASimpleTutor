@@ -256,19 +256,16 @@ public class Program
             {
                 Success = true,
                 KnowledgePointCount = knowledgeSystem.KnowledgePoints.Count,
-                SnippetCount = knowledgeSystem.Snippets.Count,
                 KnowledgePoints = knowledgeSystem.KnowledgePoints.Select(kp => new KnowledgePointInfo
                 {
                     KpId = kp.KpId,
                     Title = kp.Title,
                     ChapterPath = kp.ChapterPath,
-                    Importance = kp.Importance,
-                    SnippetCount = kp.SnippetIds.Count
+                    Importance = kp.Importance
                 }).ToList()
             };
 
             Console.WriteLine($"  构建了 {knowledgeSystem.KnowledgePoints.Count} 个知识点");
-            Console.WriteLine($"  收集了 {knowledgeSystem.Snippets.Count} 个原文片段");
             Console.WriteLine();
             Console.WriteLine("  知识点列表:");
             foreach (var kp in knowledgeSystem.KnowledgePoints.Take(10))
@@ -308,24 +305,21 @@ public class Program
 
         try
         {
-            // 从知识体系中获取原文片段
-            var snippetIds = knowledgeSystem?.Snippets?.Keys.ToList() ?? new List<string>();
-            Console.WriteLine($"  调试: 知识体系中有 {snippetIds.Count} 个原文片段");
-            if (!snippetIds.Any())
+            // 检查知识体系是否有效
+            if (knowledgeSystem == null || !knowledgeSystem.KnowledgePoints.Any())
             {
                 results.LearningGeneratorTest = new LearningGeneratorTestResult
                 {
                     Success = false,
-                    ErrorMessage = "没有可用的原文片段，请先运行知识体系构建测试"
+                    ErrorMessage = "没有可用的知识点，请先运行知识体系构建测试"
                 };
-                Console.WriteLine("  跳过: 没有原文片段");
+                Console.WriteLine("  跳过: 没有知识点");
                 Console.WriteLine();
                 return;
             }
 
             // 选择第一个知识点进行测试
             var testKp = knowledgeSystem!.KnowledgePoints.First();
-            testKp.SnippetIds = new List<string> { snippetIds.First() };
 
             // 创建知识体系存储服务
             var storeLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<KnowledgeSystemStore>();
@@ -340,14 +334,12 @@ public class Program
             {
                 Success = true,
                 HasSummary = !string.IsNullOrEmpty(learningPack.Summary?.Definition),
-                LevelCount = learningPack.Levels?.Count ?? 0,
-                SnippetCount = learningPack.SnippetIds?.Count ?? 0
+                LevelCount = learningPack.Levels?.Count ?? 0
             };
 
             Console.WriteLine($"  生成学习内容:");
             Console.WriteLine($"    - 概要定义: {(string.IsNullOrEmpty(learningPack.Summary?.Definition) ? "无" : "有")}");
             Console.WriteLine($"    - 层次内容: {learningPack.Levels?.Count ?? 0} 层");
-            Console.WriteLine($"    - 原文片段: {learningPack.SnippetIds?.Count ?? 0} 个");
             Console.WriteLine();
 
             if (learningPack.Summary != null)
@@ -400,20 +392,6 @@ public class Program
                 return;
             }
 
-            // 检查原文片段
-            var snippetIds = knowledgeSystem.Snippets?.Keys.ToList() ?? new List<string>();
-            if (!snippetIds.Any())
-            {
-                results.ExerciseGeneratorTest = new ExerciseGeneratorTestResult
-                {
-                    Success = false,
-                    ErrorMessage = "没有可用的原文片段"
-                };
-                Console.WriteLine("  跳过: 没有原文片段");
-                Console.WriteLine();
-                return;
-            }
-
             // 创建知识体系存储服务
             var storeLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<KnowledgeSystemStore>();
             var store = new KnowledgeSystemStore(storeLogger, outputPath);
@@ -427,14 +405,8 @@ public class Program
                 .OrderByDescending(kp => kp.Importance)
                 .First();
 
-            // 确保知识点有原文片段
-            if (!testKp.SnippetIds.Any())
-            {
-                testKp.SnippetIds = new List<string> { snippetIds.First() };
-            }
-
             Console.WriteLine($"  测试知识点: {testKp.Title}");
-            Console.WriteLine($"  原文片段数: {testKp.SnippetIds.Count}");
+            Console.WriteLine($"  章节路径: {string.Join(" > ", testKp.ChapterPath)}");
 
             // 生成 3 道习题
             var exercises = await exerciseService.GenerateAsync(testKp, count: 3);
@@ -633,7 +605,6 @@ public class KnowledgeBuilderTestResult
 {
     public bool Success { get; set; }
     public int KnowledgePointCount { get; set; }
-    public int SnippetCount { get; set; }
     public string? ErrorMessage { get; set; }
     public List<KnowledgePointInfo>? KnowledgePoints { get; set; }
 }
@@ -652,7 +623,6 @@ public class LearningGeneratorTestResult
     public bool Success { get; set; }
     public bool HasSummary { get; set; }
     public int LevelCount { get; set; }
-    public int SnippetCount { get; set; }
     public string? ErrorMessage { get; set; }
 }
 

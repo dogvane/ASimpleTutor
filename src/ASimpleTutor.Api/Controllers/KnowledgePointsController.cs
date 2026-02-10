@@ -1,7 +1,9 @@
 using ASimpleTutor.Api.Configuration;
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
+using ASimpleTutor.Core.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace ASimpleTutor.Api.Controllers;
 
@@ -14,6 +16,16 @@ public class KnowledgePointsController : ControllerBase
 {
     private static KnowledgeSystem? _knowledgeSystem;
     private static readonly object _lock = new();
+    private readonly ILearningGenerator _learningGenerator;
+    private readonly ILogger<KnowledgePointsController> _logger;
+
+    public KnowledgePointsController(
+        ILearningGenerator learningGenerator,
+        ILogger<KnowledgePointsController> logger)
+    {
+        _learningGenerator = learningGenerator;
+        _logger = logger;
+    }
 
     public static void SetKnowledgeSystem(KnowledgeSystem? ks)
     {
@@ -59,9 +71,11 @@ public class KnowledgePointsController : ControllerBase
     /// 获取原文对照
     /// </summary>
     [HttpGet("source-content")]
-    public IActionResult GetSourceContent(
+    public async Task<IActionResult> GetSourceContent(
         [FromQuery] string kpId,
-        [FromServices] IServiceProvider serviceProvider)
+        [FromServices] IServiceProvider serviceProvider,
+        [FromServices] KnowledgeSystemStore store,
+        CancellationToken cancellationToken)
     {
         if (_knowledgeSystem == null)
         {
@@ -79,20 +93,59 @@ public class KnowledgePointsController : ControllerBase
             return NotFound(new { error = new { code = "KP_NOT_FOUND", message = $"知识点不存在: {kpId}" } });
         }
 
-        var snippets = kp.SnippetIds
-            .Select(id => _knowledgeSystem.Snippets.TryGetValue(id, out var snippet) ? snippet : null)
-            .Where(s => s != null)
-            .ToList();
-
-        var sourceItems = snippets.Select(s => new
+        // 从 KnowledgeSystemStore 加载文档
+        var loadResult = await store.LoadAsync(_knowledgeSystem.BookHubId, cancellationToken);
+        if (loadResult.Documents == null || loadResult.Documents.Count == 0)
         {
-            filePath = s!.FilePath,
-            fileName = Path.GetFileName(s.FilePath),
-            headingPath = s.HeadingPath,
-            lineStart = s.StartLine,
-            lineEnd = s.EndLine,
-            content = s.Content
-        }).ToList();
+            return Ok(new
+            {
+                id = kp.KpId,
+                title = kp.Title,
+                sourceItems = new List<object>()
+            });
+        }
+
+        // 从 Document 中获取原文片段
+        var sourceItems = new List<object>();
+        foreach (var doc in loadResult.Documents)
+        {
+            if (doc.DocId != kp.DocId)
+            {
+                continue;
+            }
+
+            if (doc != null && System.IO.File.Exists(doc.Path))
+            {
+                try
+                {
+                    // 读取文档文件的所有行
+                    var lines = await System.IO.File.ReadAllLinesAsync(doc.Path, cancellationToken);
+
+                    // 根据章节路径查找对应的章节
+                    var section = FindSectionByPath(doc.Sections, kp.ChapterPath);
+                    if (section != null && section.StartLine >= 0 && section.EndLine <= lines.Length)
+                    {
+                        // 提取章节内容
+                        var contentLines = lines.Skip(section.StartLine).Take(section.EndLine - section.StartLine);
+                        var content = string.Join("\n", contentLines);
+
+                        sourceItems.Add(new
+                        {
+                            filePath = doc.Path,
+                            fileName = System.IO.Path.GetFileName(doc.Path),
+                            headingPath = section.HeadingPath,
+                            lineStart = section.StartLine,
+                            lineEnd = section.EndLine,
+                            content = content
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "读取原文片段失败: {KpId}", kp.KpId);
+                }
+            }
+        }
 
         return Ok(new
         {
@@ -100,6 +153,62 @@ public class KnowledgePointsController : ControllerBase
             title = kp.Title,
             sourceItems
         });
+    }
+
+    /// <summary>
+    /// 根据章节路径查找对应的章节
+    /// </summary>
+    private Section? FindSectionByPath(List<Section> sections, List<string> path)
+    {
+        if (sections == null || sections.Count == 0 || path == null || path.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var section in sections)
+        {
+            // 检查路径是否匹配（完全匹配或部分匹配）
+            if (section.HeadingPath.Count > 0)
+            {
+                // 完全匹配
+                if (section.HeadingPath.Count == path.Count)
+                {
+                    var isMatch = true;
+                    for (int i = 0; i < path.Count; i++)
+                    {
+                        if (section.HeadingPath[i] != path[i])
+                        {
+                            isMatch = false;
+                            break;
+                        }
+                    }
+                    if (isMatch)
+                    {
+                        return section;
+                    }
+                }
+
+                // 检查子章节
+                if (section.SubSections != null && section.SubSections.Count > 0)
+                {
+                    var found = FindSectionByPath(section.SubSections, path);
+                    if (found != null)
+                    {
+                        return found;
+                    }
+                }
+            }
+            else if (section.SubSections != null && section.SubSections.Count > 0)
+            {
+                var found = FindSectionByPath(section.SubSections, path);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -157,7 +266,7 @@ public class KnowledgePointsController : ControllerBase
     /// 获取幻灯片卡片
     /// </summary>
     [HttpGet("slide-cards")]
-    public IActionResult GetSlideCards([FromQuery] string kpId)
+    public async Task<IActionResult> GetSlideCards([FromQuery] string kpId, CancellationToken cancellationToken)
     {
         if (_knowledgeSystem == null)
         {
@@ -175,8 +284,30 @@ public class KnowledgePointsController : ControllerBase
             return NotFound(new { error = new { code = "KP_NOT_FOUND", message = $"知识点不存在: {kpId}" } });
         }
 
-        // 直接返回预存的 SlideCards
         var slideCards = kp.SlideCards ?? new List<SlideCard>();
+
+        // 检查是否有幻灯片卡片缺少 SpeechScript
+        var needsRegeneration = slideCards.Any(sc => string.IsNullOrEmpty(sc.SpeechScript));
+        if (needsRegeneration)
+        {
+            _logger.LogInformation("检测到幻灯片卡片缺少 SpeechScript，开始生成: {KpId}", kpId);
+            try
+            {
+                var learningPack = await _learningGenerator.GenerateAsync(kp, cancellationToken);
+                if (learningPack?.SlideCards != null && learningPack.SlideCards.Count > 0)
+                {
+                    // 更新知识点的 SlideCards
+                    kp.SlideCards = learningPack.SlideCards;
+                    slideCards = learningPack.SlideCards;
+                    _logger.LogInformation("SpeechScript 生成完成: {KpId}", kpId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "生成 SpeechScript 失败: {KpId}", kpId);
+                // 继续返回已有的 SlideCards，即使 SpeechScript 为空
+            }
+        }
 
         return Ok(new
         {

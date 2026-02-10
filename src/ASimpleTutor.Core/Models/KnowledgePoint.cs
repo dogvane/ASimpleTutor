@@ -45,11 +45,6 @@ public class KnowledgePoint
     public float Importance { get; set; }
 
     /// <summary>
-    /// 关联的原文片段 ID 列表
-    /// </summary>
-    public List<string> SnippetIds { get; set; } = new();
-
-    /// <summary>
     /// 预生成的学习内容（定义、要点、误区等）
     /// </summary>
     public Summary? Summary { get; set; }
@@ -70,6 +65,11 @@ public class KnowledgePoint
     /// 来源文档 ID
     /// </summary>
     public string? DocId { get; set; }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    public string SectionId { get; set; }
 
     /// <summary>
     /// 创建时间

@@ -16,11 +16,6 @@ public class KnowledgeSystem
     public List<KnowledgePoint> KnowledgePoints { get; set; } = new();
 
     /// <summary>
-    /// 原文片段字典（Key: SnippetId, Value: SourceSnippet）
-    /// </summary>
-    public Dictionary<string, SourceSnippet> Snippets { get; set; } = new();
-
-    /// <summary>
     /// 按章节路径组织的知识点树
     /// </summary>
     public KnowledgeTreeNode? Tree { get; set; }

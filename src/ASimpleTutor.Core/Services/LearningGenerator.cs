@@ -28,32 +28,27 @@ public class LearningGenerator : ILearningGenerator
     {
         _logger.LogInformation("生成学习内容: {KpId} - {Title}", kp.KpId, kp.Title);
 
-        List<SourceSnippet> snippets = new();
-
         try
         {
-            // 1. 从 KnowledgeSystemStore 获取原文片段
+            // 1. 从 KnowledgeSystemStore 获取文档信息
             var bookHubId = kp.BookHubId;
+            string snippetTexts = string.Empty;
+
             if (!string.IsNullOrEmpty(bookHubId))
             {
                 var loadResult = await _knowledgeSystemStore.LoadAsync(bookHubId, cancellationToken);
-                if (loadResult.KnowledgeSystem != null)
+                if (loadResult.Documents != null && loadResult.Documents.Count > 0)
                 {
-                    snippets = kp.SnippetIds
-                        .Select(id => loadResult.KnowledgeSystem.Snippets.TryGetValue(id, out var snippet) ? snippet : null)
-                        .Where(s => s != null)
-                        .Cast<SourceSnippet>()
-                        .ToList();
+                    // 从 Document 中获取原文片段
+                    snippetTexts = await GetSnippetTextsFromDocumentsAsync(kp, loadResult.Documents, cancellationToken);
                 }
             }
-
-            var snippetTexts = string.Join("\n\n", snippets.Select(s => s.Content));
 
             // 检查 snippetTexts 是否为空或长度小于 100
             if (string.IsNullOrEmpty(snippetTexts) || snippetTexts.Length < 100)
             {
                 _logger.LogError("原文片段为空或长度不足: {KpId}, 长度: {Length}", kp.KpId, snippetTexts?.Length ?? 0);
-                return CreateFallbackLearningPack(kp, snippets);
+                return CreateFallbackLearningPack(kp, new List<SourceSnippet>());
             }
 
             // 2. 调用 LLM 生成学习内容
@@ -67,20 +62,121 @@ public class LearningGenerator : ILearningGenerator
             else
             {
                 // 降级：使用原文片段提取要点
-                return CreateFallbackLearningPack(kp, snippets);
+                return CreateFallbackLearningPack(kp, new List<SourceSnippet>());
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "学习内容生成失败: {KpId}", kp.KpId);
-            return CreateFallbackLearningPack(kp, snippets);
+            return CreateFallbackLearningPack(kp, new List<SourceSnippet>());
         }
     }
 
-    private async Task<LearningPack?> GenerateLearningContentAsync(
-        KnowledgePoint kp,
-        string snippetTexts,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// 从 Document 中获取原文片段内容
+    /// </summary>
+    private async Task<string> GetSnippetTextsFromDocumentsAsync(KnowledgePoint kp, List<Document> documents, CancellationToken cancellationToken)
+    {
+        var snippetContents = new List<string>();
+
+        // 遍历所有文档，根据章节路径查找对应的章节
+        foreach (var doc in documents)
+        {
+            if (doc.DocId != kp.DocId)
+            {
+                continue;
+            }
+
+            if (doc != null && File.Exists(doc.Path))
+            {
+                try
+                {
+                    // 读取文档文件的所有行
+                    var lines = await File.ReadAllLinesAsync(doc.Path, cancellationToken);
+
+                    // 根据章节路径查找对应的章节
+                    var section = FindSectionByPath(doc.Sections, kp.ChapterPath);
+                    if (section != null && section.StartLine >= 0 && section.EndLine <= lines.Length)
+                    {
+                        // 提取章节内容
+                        var contentLines = lines.Skip(section.StartLine).Take(section.EndLine - section.StartLine);
+                        var content = string.Join("\n", contentLines);
+                        if (!string.IsNullOrEmpty(content))
+                        {
+                            snippetContents.Add(content);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "读取原文片段失败: {KpId}", kp.KpId);
+                }
+            }
+        }
+
+        return string.Join("\n\n", snippetContents);
+    }
+
+    /// <summary>
+    /// 根据章节路径查找对应的章节
+    /// </summary>
+    private Section? FindSectionByPath(List<Section> sections, List<string> path)
+    {
+        if (sections == null || sections.Count == 0 || path == null || path.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var section in sections)
+        {
+            // 检查路径是否匹配（完全匹配或部分匹配）
+            if (section.HeadingPath.Count > 0)
+            {
+                // 完全匹配
+                if (section.HeadingPath.Count == path.Count)
+                {
+                    var isMatch = true;
+                    for (int i = 0; i < path.Count; i++)
+                    {
+                        if (section.HeadingPath[i] != path[i])
+                        {
+                            isMatch = false;
+                            break;
+                        }
+                    }
+                    if (isMatch)
+                    {
+                        return section;
+                    }
+                }
+
+                // 检查子章节
+                if (section.SubSections != null && section.SubSections.Count > 0)
+                {
+                    var found = FindSectionByPath(section.SubSections, path);
+                    if (found != null)
+                    {
+                        return found;
+                    }
+                }
+            }
+            else if (section.SubSections != null && section.SubSections.Count > 0)
+            {
+                var found = FindSectionByPath(section.SubSections, path);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+        }
+
+        return null;
+    }
+
+        private async Task<LearningPack?> GenerateLearningContentAsync(
+            KnowledgePoint kp,
+            string snippetTexts,
+            CancellationToken cancellationToken)
     {
         var systemPrompt = @"你是一个专业的学习内容生成专家。你的任务是为用户生成结构化的学习内容。
 
@@ -203,7 +299,6 @@ public class LearningGenerator : ILearningGenerator
             KpId = kp.KpId,
             Summary = content.Summary ?? new Summary(),
             Levels = content.Levels ?? new List<ContentLevel>(),
-            SnippetIds = kp.SnippetIds,
             RelatedKpIds = new List<string>(),
             SlideCards = content.SlideCards?.Select((dto, index) => new SlideCard
                 {
@@ -223,7 +318,72 @@ public class LearningGenerator : ILearningGenerator
                 .ToList() ?? new List<SlideCard>()
         };
 
+        // 为每个幻灯片卡片生成口语化讲解脚本
+        await GenerateSpeechScriptsAsync(learningPack.SlideCards, kp, cancellationToken);
+
         return learningPack;
+    }
+
+    /// <summary>
+    /// 为幻灯片卡片生成口语化讲解脚本
+    /// </summary>
+    private async Task GenerateSpeechScriptsAsync(List<SlideCard> slideCards, KnowledgePoint kp, CancellationToken cancellationToken)
+    {
+        foreach (var card in slideCards)
+        {
+            try
+            {
+                _logger.LogDebug("为幻灯片卡片生成语音脚本: {SlideId}", card.SlideId);
+                card.SpeechScript = await GenerateSpeechScriptAsync(card, kp, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "生成语音脚本失败: {SlideId}", card.SlideId);
+                card.SpeechScript = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 生成单个幻灯片卡片的口语化讲解脚本
+    /// </summary>
+    private async Task<string?> GenerateSpeechScriptAsync(SlideCard card, KnowledgePoint kp, CancellationToken cancellationToken)
+    {
+        var systemPrompt = @"你是一个专业的教学讲解专家。你的任务是为幻灯片卡片生成口语化的讲解脚本，用于文字转语音（TTS）播放。
+
+请以自然、流畅的口语风格编写讲解脚本，遵循以下原则：
+1. 使用第一人称（我、我们），营造亲切感
+2. 使用简单易懂的语言，避免过于学术化的表达
+3. 适当使用停顿标记（用逗号、句号表示）
+4. 每句话不要太长，便于语音播放
+5. 语气要自然、友好，像老师在讲解
+6. 避免使用 markdown 格式，只返回纯文本
+7. 讲解内容要基于幻灯片内容，不要添加额外信息
+
+脚本结构：
+- 开场：用1-2句话引入主题
+- 主体：用3-5句话讲解核心内容
+- 结尾：用1句话总结或过渡
+
+示例格式：
+大家好，今天我们来学习一个重要的概念。这个概念是什么呢？它就是我们在日常生活中经常遇到的现象。简单来说，它是指... 好了，这就是这个概念的基本含义。";
+
+        var userMessage = $"知识点标题：{kp.Title}\n" +
+                          $"幻灯片标题：{card.Title}\n" +
+                          $"幻灯片内容：{card.HtmlContent}\n" +
+                          $"幻灯片类型：{card.Type}\n\n" +
+                          "请为这张幻灯片生成口语化的讲解脚本：";
+
+        try
+        {
+            var speechScript = await _llmService.ChatAsync(systemPrompt, userMessage, cancellationToken);
+            return string.IsNullOrEmpty(speechScript) ? null : speechScript.Trim();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "生成语音脚本失败: {SlideId}", card.SlideId);
+            return null;
+        }
     }
 
     /// <summary>
@@ -323,8 +483,7 @@ public class LearningGenerator : ILearningGenerator
             Levels = new List<ContentLevel>
             {
                 new ContentLevel { Level = 1, Title = "概览", Content = "无法生成层次化内容，请查看原文片段" }
-            },
-            SnippetIds = snippets.Select(s => s.SnippetId).ToList()
+            }
         };
     }
 }

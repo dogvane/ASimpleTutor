@@ -34,6 +34,38 @@ public class Document
     /// 文档内容的 SHA256 哈希值，用于检测变更
     /// </summary>
     public string? ContentHash { get; set; }
+
+    /// <summary>
+    /// 根据 SectionId 查找对应的章节（递归搜索所有子章节）
+    /// </summary>
+    /// <param name="sectionId">章节唯一标识符</param>
+    /// <returns>找到的章节对象，未找到返回 null</returns>
+    public Section? FindSectionById(string sectionId)
+    {
+        return FindSectionByIdRecursive(Sections, sectionId);
+    }
+
+    /// <summary>
+    /// 递归查找章节的辅助方法
+    /// </summary>
+    private Section? FindSectionByIdRecursive(List<Section> sections, string sectionId)
+    {
+        foreach (var section in sections)
+        {
+            if (section.SectionId == sectionId)
+            {
+                return section;
+            }
+
+            var foundInSubSections = FindSectionByIdRecursive(section.SubSections, sectionId);
+            if (foundInSubSections != null)
+            {
+                return foundInSubSections;
+            }
+        }
+
+        return null;
+    }
 }
 
 /// <summary>

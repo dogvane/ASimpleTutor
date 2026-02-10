@@ -51,13 +51,12 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 
             // 2. 调用 LLM 提取知识点
             _logger.LogInformation("调用 LLM 提取知识点");
-            var (knowledgePoints, snippets) = await ExtractKnowledgePointsAsync(documents, cancellationToken);
+            var knowledgePoints = await ExtractKnowledgePointsAsync(documents, cancellationToken);
             knowledgeSystem.KnowledgePoints = knowledgePoints;
-            knowledgeSystem.Snippets = snippets;
 
             // 4. 为每个知识点预生成学习内容
             _logger.LogInformation("为知识点预生成学习内容");
-            await GenerateLearningContentForPointsAsync(knowledgePoints, snippets, cancellationToken);
+            await GenerateLearningContentForPointsAsync(knowledgePoints, documents, cancellationToken);
 
 
             // 6. 构建知识树
@@ -76,86 +75,10 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         return (knowledgeSystem, documents);
     }
 
-    private async Task<(List<KnowledgePoint> KnowledgePoints, Dictionary<string, SourceSnippet> Snippets)> ExtractKnowledgePointsAsync(
+    private async Task<List<KnowledgePoint>> ExtractKnowledgePointsAsync(
         List<Document> documents,
         CancellationToken cancellationToken)
     {
-        var snippets = new Dictionary<string, SourceSnippet>();
-
-        // 为每个文档的每个 Section 创建唯一的 chunk ID
-        var sectionChunkIds = new Dictionary<string, string>();
-        var sectionContentMap = new Dictionary<string, string>();
-        var sectionDocMap = new Dictionary<string, string>(); // 记录 section chunk ID 对应的文档 ID
-        var sectionPathMap = new Dictionary<string, List<string>>(); // 记录 section chunk ID 对应的章节路径
-        var sectionLineRangeMap = new Dictionary<string, (int startLine, int endLine)>(); // 记录 section chunk ID 对应的行号范围
-
-        // 构建 section chunk ID 和内容映射
-        foreach (var doc in documents)
-        {
-            if (doc.Sections != null && doc.Sections.Count > 0)
-            {
-                // 使用深度优先搜索遍历所有层级的章节
-                TraverseSectionsAsync(doc, doc.Sections, sectionChunkIds, sectionContentMap, sectionDocMap, sectionPathMap, sectionLineRangeMap);
-            }
-            else
-            {
-                // 如果文档没有 Sections，为整个文档创建一个 chunk ID
-                var docId = $"{doc.DocId}_chunk_0";
-                sectionChunkIds[docId] = docId;
-                sectionDocMap[docId] = doc.DocId;
-                sectionPathMap[docId] = new List<string> { doc.Title };
-                sectionContentMap[docId] = ReconstructDocumentContent(doc);
-                sectionLineRangeMap[docId] = (0, 0);
-            }
-        }
-
-        // 为每个 section 创建 SourceSnippet 并添加到 snippets 字典
-        foreach (var sectionId in sectionChunkIds.Keys)
-        {
-            var docId = sectionDocMap[sectionId];
-            var sectionPath = sectionPathMap[sectionId];
-            var sectionContent = sectionContentMap[sectionId];
-            var (startLine, endLine) = sectionLineRangeMap[sectionId];
-
-            // 查找对应的文档
-            var doc = documents.FirstOrDefault(d => d.DocId == docId);
-            if (doc != null)
-            {
-                // 创建 SourceSnippet
-                var snippet = new SourceSnippet
-                {
-                    SnippetId = sectionId,
-                    BookHubId = doc.BookHubId,
-                    DocId = docId,
-                    FilePath = doc.Path,
-                    HeadingPath = sectionPath,
-                    Content = sectionContent,
-                    StartLine = startLine,
-                    EndLine = endLine,
-                    ChunkId = sectionId
-                };
-
-                // 添加到 snippets 字典
-                snippets[sectionId] = snippet;
-            }
-        }
-
-        // 构建 chunk ID 列表说明
-        var chunkIdList = new System.Text.StringBuilder();
-        chunkIdList.AppendLine("可用原文片段 ID（chunk_id）：");
-        if (sectionChunkIds.Count > 0)
-        {
-            foreach (var kv in sectionChunkIds)
-            {
-                var sectionPath = sectionPathMap.TryGetValue(kv.Key, out var path) ? string.Join(" > ", path) : "";
-                chunkIdList.AppendLine($"  - {kv.Key} (章节: {sectionPath})");
-            }
-        }
-        else
-        {
-            chunkIdList.AppendLine("  - {docId}_chunk_0 (默认)");
-        }
-
         var systemPrompt = @"你是一个知识提取专家。你的任务是从文档中提取可学习的知识点。
 
 请以 JSON 格式输出，结构如下：
@@ -163,20 +86,16 @@ public class KnowledgeBuilder : IKnowledgeBuilder
   ""schema_version"": ""1.0"",
   ""knowledge_points"": [
     {
-      ""kp_id"": ""唯一的知识点ID"",
       ""title"": ""知识点标题"",
       ""type"": ""concept|chapter|process|api|bestPractice"",
       ""aliases"": [""别名1"", ""别名2""] ,
       ""chapter_path"": [""章节1"", ""章节2"", ""章节3""] ,
       ""importance"": 0.0-1.0,
-      ""snippet_ids"": [""chunk_id1"", ""chunk_id2""] ,
       ""summary"": ""一句话总结（必须填写）"",
-      ""doc_id"": ""来源文档ID""
     }
   ]
 }
 
-" + chunkIdList.ToString() + @"
 知识点类型说明（type 字段）：
 - concept: 概念、定义、术语、理论
 - chapter: 章节标题节点
@@ -186,18 +105,15 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 
 知识点识别规则：
 1. 识别文档中的概念、术语、规则、步骤、API 等
-2. 每个知识点必须至少关联一个原文片段（使用上面的 chunk_id）
+2. 每个知识点必须至少关联一个章节路径（使用完整的章节路径，如 ""第一章 概述 > 1.1 简介""）
 3. importance 反映知识点的重要程度（核心概念=0.8+, 细节=0.5, 边缘=0.3）
 4. 尽量使用原文中的表述作为标题
-5. snippet_ids 必须使用上述可用的 chunk_id 格式
 6. summary 必须填写，不能为空
 7. type 字段必须填写且有效
-8. doc_id 必须填写，标识知识点来源的文档
 9. chapter_path 必须反映知识点所在的完整章节层次结构
 
 自检要求（生成后请检查）：
 - knowledge_points 不能为空，如果确实没有知识点请返回空数组并说明原因
-- 每个知识点的 snippet_ids 至少包含 1 个 ID
 - 每个知识点的 type 必须是有效的类型之一
 - 所有标题必须非空且唯一（如果重复请合并）";
 
@@ -205,21 +121,29 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 
         try
         {
-            // 对每个 section 单独处理，提取知识点
-            _logger.LogInformation("开始基于 Section 结构提取知识点，共 {SectionCount} 个 Section", sectionChunkIds.Count);
-
-            foreach (var sectionId in sectionChunkIds.Keys)
+            // 遍历所有文档的章节结构
+            var allSections = new List<(Document doc, Section section)>();
+            foreach (var doc in documents)
             {
-                var sectionContent = sectionContentMap[sectionId];
-                var sectionPath = sectionPathMap[sectionId];
-                var docId = sectionDocMap[sectionId];
+                if (doc.Sections != null && doc.Sections.Count > 0)
+                {
+                    CollectAllSections(doc, doc.Sections, allSections);
+                }
+            }
+
+            _logger.LogInformation("开始基于 Section 结构提取知识点，共 {SectionCount} 个 Section", allSections.Count);
+
+            foreach (var (doc, section) in allSections)
+            {
+                var sectionPath = section.HeadingPath;
+                var sectionContent = await ReadSectionContentAsync(doc, section, cancellationToken);
 
                 _logger.LogInformation("处理 Section: {SectionPath}, 字符数: {CharCount}", string.Join(" > ", sectionPath), sectionContent.Length);
 
                 // 调用 LLM 提取当前 section 的知识点
                 var response = await _llmService.ChatJsonAsync<KnowledgePointsResponse>(
                     systemPrompt,
-                    $"请分析以下章节内容并提取知识点：\n\n{sectionContent}",
+                    $"请分析以下章节内容并提取知识点：\n\n章节路径：{string.Join(" > ", sectionPath)}\n\n{sectionContent}",
                     cancellationToken);
 
                 if (response?.KnowledgePoints != null && response.KnowledgePoints.Count > 0)
@@ -229,7 +153,8 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                     // 为每个知识点添加正确的文档 ID 和章节路径
                     foreach (var kp in response.KnowledgePoints)
                     {
-                        kp.DocId = docId;
+                        kp.SectionId = section.SectionId;
+                        kp.DocId = doc.DocId;
                         // 如果 LLM 没有提供章节路径，使用 section 的路径
                         if (kp.ChapterPath == null || kp.ChapterPath.Count == 0)
                         {
@@ -256,13 +181,6 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 
                 foreach (var kp in knowledgePoints)
                 {
-                    // 校验 snippet_ids
-                    if (kp.SnippetIds == null || kp.SnippetIds.Count == 0)
-                    {
-                        _logger.LogWarning("知识点 '{Title}' 缺少 snippet_ids，已跳过", kp.Title);
-                        continue;
-                    }
-
                     // 校验知识点类型
                     if (string.IsNullOrEmpty(kp.Type) || !IsValidKpType(kp.Type))
                     {
@@ -302,18 +220,17 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                     })
                     .ToList();
 
-                return (kpList, snippets);
+                return kpList;
             }
 
-            return (new List<KnowledgePoint>(), snippets);
+            return new List<KnowledgePoint>();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "调用 LLM 提取知识点失败");
-            _logger.LogError("失败上下文：文档数={DocumentCount}, 章节数={SectionCount}, 当前处理到的章节={CurrentSection}", 
-                documents.Count, sectionChunkIds.Count, sectionChunkIds.Keys.LastOrDefault());
+            _logger.LogError("失败上下文：文档数={DocumentCount}", documents.Count);
             _logger.LogError("可能的原因：LLM 服务不可用、API 密钥无效、网络连接问题或内容长度超过限制");
-            return (new List<KnowledgePoint>(), snippets);
+            return new List<KnowledgePoint>();
         }
     }
 
@@ -505,24 +422,20 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 
     private async Task GenerateLearningContentForPointsAsync(
         List<KnowledgePoint> knowledgePoints,
-        Dictionary<string, SourceSnippet> snippets,
+        List<Document> documents,
         CancellationToken cancellationToken)
     {
         _logger.LogInformation("开始为 {Count} 个知识点生成学习内容", knowledgePoints.Count);
 
+        
         foreach (var kp in knowledgePoints)
         {
             try
             {
                 _logger.LogInformation("生成学习内容: {KpId}", kp.KpId);
 
-                // 获取原文片段
-                var kpSnippets = kp.SnippetIds
-                    .Select(id => snippets.TryGetValue(id, out var snippet) ? snippet : null)
-                    .Where(s => s != null)
-                    .Cast<SourceSnippet>()
-                    .ToList();
-                var snippetTexts = string.Join("\n\n", kpSnippets.Select(s => s.Content));
+                // 从 Document 中获取原文片段
+                var snippetTexts = await GetSnippetTextsFromDocumentsAsync(kp, documents, cancellationToken);
 
                 // 检查 snippetTexts 是否为空或长度小于 100
                 if (string.IsNullOrEmpty(snippetTexts) || snippetTexts.Length < 100)
@@ -587,55 +500,154 @@ public class KnowledgeBuilder : IKnowledgeBuilder
     }
 
     /// <summary>
-    /// 使用深度优先搜索遍历所有层级的章节，只添加叶子节点到处理列表
+    /// 从 Document 中获取原文片段内容
     /// </summary>
-    private void TraverseSectionsAsync(
-        Document doc,
-        List<Section> sections,
-        Dictionary<string, string> sectionChunkIds,
-        Dictionary<string, string> sectionContentMap,
-        Dictionary<string, string> sectionDocMap,
-        Dictionary<string, List<string>> sectionPathMap,
-        Dictionary<string, (int startLine, int endLine)> sectionLineRangeMap)
+    private async Task<string> GetSnippetTextsFromDocumentsAsync(KnowledgePoint kp, List<Document> documents, CancellationToken cancellationToken)
     {
-        foreach (var section in sections)
+        var snippetContents = new List<string>();
+
+        // 遍历所有文档，根据章节路径查找对应的章节
+        foreach (var doc in documents)
         {
-            // 递归处理子章节
-            if (section.SubSections != null && section.SubSections.Count > 0)
+            if (doc.DocId != kp.DocId)
             {
-                TraverseSectionsAsync(doc, section.SubSections, sectionChunkIds, sectionContentMap, sectionDocMap, sectionPathMap, sectionLineRangeMap);
-                // 有子章节，当前节点不单独处理
+                continue;
             }
-            else
+
+            if (doc != null && File.Exists(doc.Path))
             {
-                // 没有子章节，添加到处理列表
-                var sectionId = $"{doc.DocId}_section_{section.StartLine}_{section.EndLine}";
-                sectionChunkIds[sectionId] = sectionId;
-                sectionDocMap[sectionId] = doc.DocId;
-                sectionPathMap[sectionId] = section.HeadingPath;
-                sectionLineRangeMap[sectionId] = (section.StartLine, section.EndLine);
-
-                // 构建 section 内容
-                var sectionContent = new System.Text.StringBuilder();
-                var headingLevel = section.HeadingPath.Count;
-                var headingPrefix = new string('#', headingLevel + 1); // +1 因为文档标题是 H1
-                sectionContent.AppendLine($"{headingPrefix} {section.HeadingPath.Last()}");
-                sectionContent.AppendLine();
-
-                // 从文件中提取章节内容
-                if (File.Exists(doc.Path))
+                try
                 {
-                    var docLines = File.ReadAllLines(doc.Path);
-                    if (docLines.Length > 0 && section.StartLine >= 0 && section.EndLine <= docLines.Length)
+                    // 读取文档文件的所有行
+                    var lines = await File.ReadAllLinesAsync(doc.Path, cancellationToken);
+
+                    // 根据章节路径查找对应的章节
+
+                    var section = doc.FindSectionById(kp.SectionId);
+                    if (section != null && section.StartLine >= 0 && section.EndLine <= lines.Length)
                     {
-                        for (int i = section.StartLine; i < section.EndLine; i++)
+                        // 提取章节内容
+                        var contentLines = lines.Skip(section.StartLine).Take(section.EndLine - section.StartLine);
+                        var content = string.Join("\n", contentLines);
+                        if (!string.IsNullOrEmpty(content))
                         {
-                            sectionContent.AppendLine(docLines[i]);
+                            snippetContents.Add(content);
                         }
                     }
                 }
-                sectionContentMap[sectionId] = sectionContent.ToString();
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "读取原文片段失败: {KpId}", kp.KpId);
+                }
             }
+        }
+
+        return string.Join("\n\n", snippetContents);
+    }
+
+    /// <summary>
+    /// 根据章节路径查找对应的章节
+    /// </summary>
+    private Section? FindSectionByPath(List<Section> sections, List<string> path)
+    {
+        if (sections == null || sections.Count == 0 || path == null || path.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var section in sections)
+        {
+            // 检查路径是否匹配（完全匹配或部分匹配）
+            if (section.HeadingPath.Count > 0)
+            {
+                // 完全匹配
+                if (section.HeadingPath.Count == path.Count)
+                {
+                    var isMatch = true;
+                    for (int i = 0; i < path.Count; i++)
+                    {
+                        if (section.HeadingPath[i] != path[i])
+                        {
+                            isMatch = false;
+                            break;
+                        }
+                    }
+                    if (isMatch)
+                    {
+                        return section;
+                    }
+                }
+
+                // 检查子章节
+                if (section.SubSections != null && section.SubSections.Count > 0)
+                {
+                    var found = FindSectionByPath(section.SubSections, path);
+                    if (found != null)
+                    {
+                        return found;
+                    }
+                }
+            }
+            else if (section.SubSections != null && section.SubSections.Count > 0)
+            {
+                var found = FindSectionByPath(section.SubSections, path);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 收集所有章节（递归）
+    /// </summary>
+    private void CollectAllSections(Document doc, List<Section> sections, List<(Document doc, Section section)> allSections)
+    {
+        foreach (var section in sections)
+        {
+            if(section.SubSections?.Count == 0)
+                allSections.Add((doc, section));
+
+            if (section.SubSections != null && section.SubSections.Count > 0)
+            {
+                CollectAllSections(doc, section.SubSections, allSections);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 读取章节内容
+    /// </summary>
+    private async Task<string> ReadSectionContentAsync(Document doc, Section section, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!File.Exists(doc.Path))
+            {
+                return string.Empty;
+            }
+
+            var lines = await File.ReadAllLinesAsync(doc.Path, cancellationToken);
+            if (lines.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            if (section.StartLine < 0 || section.EndLine > lines.Length)
+            {
+                return string.Empty;
+            }
+
+            var contentLines = lines.Skip(section.StartLine).Take(section.EndLine - section.StartLine);
+            return string.Join("\n", contentLines);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "读取章节内容失败: {DocId}, {SectionPath}", doc.DocId, string.Join(" > ", section.HeadingPath));
+            return string.Empty;
         }
     }
 
@@ -729,7 +741,6 @@ public class KnowledgeBuilder : IKnowledgeBuilder
             KpId = kp.KpId,
             Summary = content.Summary,
             Levels = content.Levels,
-            SnippetIds = kp.SnippetIds,
             RelatedKpIds = new List<string>(),
             SlideCards = content.SlideCards
                 .Select((dto, index) => new SlideCard
@@ -767,20 +778,6 @@ public class KnowledgeBuilder : IKnowledgeBuilder
             SlideTypeDto.Summary => SlideType.Summary,
             _ => SlideType.Explanation
         };
-    }
-
-    private string ReconstructDocumentContent(Document doc)
-    {
-        // 从文件路径读取原始文档内容
-        if (File.Exists(doc.Path))
-        {
-            var content = File.ReadAllText(doc.Path);
-            return content;
-        }
-        
-        // 如果文件不存在，返回空字符串
-        _logger.LogWarning("文档文件不存在: {FilePath}", doc.Path);
-        return string.Empty;
     }
 
     public static KnowledgeTreeNode BuildKnowledgeTree(List<KnowledgePoint> knowledgePoints)
@@ -843,7 +840,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 Type = KpType.Chapter,
                 ChapterPath = new List<string> { doc.Title },
                 Importance = 0.5f,
-                SnippetIds = new List<string> { $"{doc.DocId}_chunk_0" },
+                SectionId = "",
                 DocId = doc.DocId
             };
             knowledgeSystem.KnowledgePoints.Add(kp);

@@ -90,6 +90,12 @@ public class SlideCardDto
     public string Content { get; set; } = string.Empty;
 
     /// <summary>
+    /// 口语化讲解脚本（用于 TTS）
+    /// </summary>
+    [JsonProperty("speechScript", NullValueHandling = NullValueHandling.Ignore)]
+    public string? SpeechScript { get; set; }
+
+    /// <summary>
     /// 知识点链接列表
     /// </summary>
     [JsonProperty("kpLinks")]

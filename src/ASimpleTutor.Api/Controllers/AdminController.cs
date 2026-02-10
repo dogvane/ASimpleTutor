@@ -128,7 +128,6 @@ public class AdminController : ControllerBase
             {
                 knowledgeSystem = loadResult.KnowledgeSystem;
                 knowledgePointCount = knowledgeSystem.KnowledgePoints.Count;
-                snippetCount = knowledgeSystem.Snippets.Count;
             }
 
             if (loadResult.Documents != null)

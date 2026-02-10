@@ -37,14 +37,14 @@ public class KnowledgePointDto
     [JsonProperty("importance")]
     public float Importance { get; set; }
 
-    [JsonProperty("snippet_ids")]
-    public List<string>? SnippetIds { get; set; }
-
     [JsonProperty("summary")]
     public string? Summary { get; set; }
 
     [JsonProperty("doc_id")]
     public string? DocId { get; set; }
+
+    [JsonProperty("section_id")]
+    public string SectionId { get; set; }
 
     public KnowledgePoint ToKnowledgePoint()
     {
@@ -56,7 +56,7 @@ public class KnowledgePointDto
             Aliases = Aliases ?? new List<string>(),
             ChapterPath = ChapterPath ?? new List<string>(),
             Importance = Importance,
-            SnippetIds = SnippetIds ?? new List<string>(),
+            SectionId = SectionId ?? string.Empty,
             DocId = DocId
         };
     }

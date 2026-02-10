@@ -45,17 +45,15 @@ public class KnowledgeSystemStore
 
         try
         {
-            // 并行保存知识体系、原文片段和文档章节信息
+            // 并行保存知识体系和文档章节信息
             var saveKnowledgeTask = SaveKnowledgeSystemAsync(knowledgeSystem, directory, cancellationToken);
-            var saveSnippetsTask = SaveSnippetsAsync(knowledgeSystem.Snippets, directory, cancellationToken);
             var saveDocumentsTask = SaveDocumentsAsync(documents, knowledgeSystem.BookHubId, directory, cancellationToken);
 
-            await Task.WhenAll(saveKnowledgeTask, saveSnippetsTask, saveDocumentsTask);
+            await Task.WhenAll(saveKnowledgeTask, saveDocumentsTask);
 
-            _logger.LogInformation("知识系统保存完成: {BookHubId}, 知识点: {KpCount}, 原文片段: {SnippetCount}, 文档: {DocCount}",
+            _logger.LogInformation("知识系统保存完成: {BookHubId}, 知识点: {KpCount}, 文档: {DocCount}",
                 knowledgeSystem.BookHubId,
                 knowledgeSystem.KnowledgePoints.Count,
-                knowledgeSystem.Snippets.Count,
                 documents?.Count ?? 0);
         }
         catch (Exception ex)
@@ -82,15 +80,13 @@ public class KnowledgeSystemStore
 
         try
         {
-            // 并行加载知识体系、原文片段和文档章节信息
+            // 并行加载知识体系和文档章节信息
             var loadKnowledgeTask = LoadKnowledgeSystemAsync(directory, cancellationToken);
-            var loadSnippetsTask = LoadSnippetsAsync(directory, cancellationToken);
             var loadDocumentsTask = LoadDocumentsAsync(directory, cancellationToken);
 
-            await Task.WhenAll(loadKnowledgeTask, loadSnippetsTask, loadDocumentsTask);
+            await Task.WhenAll(loadKnowledgeTask, loadDocumentsTask);
 
             var knowledgeSystem = loadKnowledgeTask.Result;
-            var snippets = loadSnippetsTask.Result;
             var documents = loadDocumentsTask.Result;
 
             if (knowledgeSystem == null)
@@ -99,19 +95,12 @@ public class KnowledgeSystemStore
                 return (null, documents);
             }
 
-            // 合并原文片段
-            if (snippets != null)
-            {
-                knowledgeSystem.Snippets = snippets;
-            }
-
             // 重建知识树
             knowledgeSystem.Tree = ASimpleTutor.Core.Services.KnowledgeBuilder.BuildKnowledgeTree(knowledgeSystem.KnowledgePoints);
 
-            _logger.LogInformation("知识系统加载完成: {BookHubId}, 知识点: {KpCount}, 原文片段: {SnippetCount}, 文档: {DocCount}",
+            _logger.LogInformation("知识系统加载完成: {BookHubId}, 知识点: {KpCount}, 文档: {DocCount}",
                 bookHubId,
                 knowledgeSystem.KnowledgePoints.Count,
-                knowledgeSystem.Snippets.Count,
                 documents?.Count ?? 0);
 
             return (knowledgeSystem, documents);
@@ -228,23 +217,6 @@ public class KnowledgeSystemStore
         await File.WriteAllTextAsync(filePath, json, cancellationToken);
     }
 
-    private async Task SaveSnippetsAsync(Dictionary<string, SourceSnippet> snippets, string directory, CancellationToken cancellationToken)
-    {
-        if (snippets.Count == 0)
-        {
-            return;
-        }
-
-        var saveModel = new SnippetsSaveModel
-        {
-            Snippets = snippets
-        };
-
-        var filePath = Path.Combine(directory, "snippets.json");
-        var json = JsonConvert.SerializeObject(saveModel, Formatting.Indented);
-        await File.WriteAllTextAsync(filePath, json, cancellationToken);
-    }
-
     private async Task<KnowledgeSystem?> LoadKnowledgeSystemAsync(string directory, CancellationToken cancellationToken)
     {
         var filePath = Path.Combine(directory, "knowledge-system.json");
@@ -263,28 +235,23 @@ public class KnowledgeSystemStore
             return null;
         }
 
-        return new KnowledgeSystem
+        var knowledgeSystem = new KnowledgeSystem
         {
             BookHubId = saveModel.BookHubId,
             KnowledgePoints = saveModel.KnowledgePoints ?? new List<KnowledgePoint>(),
-            Snippets = new Dictionary<string, SourceSnippet>(),
             Tree = null // 重建
         };
-    }
 
-    private async Task<Dictionary<string, SourceSnippet>?> LoadSnippetsAsync(string directory, CancellationToken cancellationToken)
-    {
-        var filePath = Path.Combine(directory, "snippets.json");
-
-        if (!File.Exists(filePath))
+        // 为每个知识点设置 BookHubId（如果为空）
+        foreach (var kp in knowledgeSystem.KnowledgePoints)
         {
-            return new Dictionary<string, SourceSnippet>();
+            if (string.IsNullOrEmpty(kp.BookHubId))
+            {
+                kp.BookHubId = saveModel.BookHubId;
+            }
         }
 
-        var json = await File.ReadAllTextAsync(filePath, cancellationToken);
-        var saveModel = JsonConvert.DeserializeObject<SnippetsSaveModel>(json);
-
-        return saveModel?.Snippets ?? new Dictionary<string, SourceSnippet>();
+        return knowledgeSystem;
     }
 
     private async Task SaveDocumentsAsync(List<Document>? documents, string bookHubId, string directory, CancellationToken cancellationToken)
@@ -334,15 +301,6 @@ internal class KnowledgeSystemSaveModel
 
     [JsonProperty("saved_at")]
     public DateTime SavedAt { get; set; } = DateTime.UtcNow;
-}
-
-/// <summary>
-/// 原文片段保存模型
-/// </summary>
-internal class SnippetsSaveModel
-{
-    [JsonProperty("snippets")]
-    public Dictionary<string, SourceSnippet> Snippets { get; set; } = new();
 }
 
 /// <summary>
