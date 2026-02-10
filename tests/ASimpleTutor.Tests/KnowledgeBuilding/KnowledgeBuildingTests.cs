@@ -57,7 +57,7 @@ public class KnowledgeBuildingTests
                     Title = "核心概念A",
                     ChapterPath = new List<string> { "第一章", "第一节" },
                     Importance = 0.8f,
-                    SnippetIds = new List<string> { "snippet_1" },
+
                     Type = "concept"
                 },
                 new KnowledgePointDto
@@ -66,7 +66,7 @@ public class KnowledgeBuildingTests
                     Title = "核心概念B",
                     ChapterPath = new List<string> { "第一章", "第二节" },
                     Importance = 0.6f,
-                    SnippetIds = new List<string> { "snippet_2" },
+
                     Type = "concept"
                 }
             }
@@ -84,7 +84,7 @@ public class KnowledgeBuildingTests
 
         // Assert
         result.KnowledgeSystem.Should().NotBeNull();
-        result.KnowledgeSystem.BookRootId.Should().Be(bookRootId);
+        result.KnowledgeSystem.BookHubId.Should().Be(bookRootId);
         result.KnowledgeSystem.KnowledgePoints.Should().NotBeEmpty();
     }
 
@@ -104,7 +104,7 @@ public class KnowledgeBuildingTests
 
         // Assert
         result.KnowledgeSystem.Should().NotBeNull();
-        result.KnowledgeSystem.BookRootId.Should().Be(bookRootId);
+        result.KnowledgeSystem.BookHubId.Should().Be(bookRootId);
         result.KnowledgeSystem.KnowledgePoints.Should().BeEmpty();
         // 当没有文档时，Tree 可能为 null
         if (result.KnowledgeSystem.Tree != null)
@@ -114,7 +114,7 @@ public class KnowledgeBuildingTests
     }
 
     [Fact]
-    public async Task BuildAsync_ShouldAssignBookRootIdToDocuments()
+    public async Task BuildAsync_ShouldAssignBookHubIdToDocuments()
     {
         // Arrange
         var bookRootId = "test_book_123";
@@ -134,7 +134,6 @@ public class KnowledgeBuildingTests
                 {
                     Title = "Test KP",
                     Importance = 0.5f,
-                    SnippetIds = new List<string> { "snippet_1" },
                     Type = "concept"
                 }
             }
@@ -179,7 +178,6 @@ public class KnowledgeBuildingTests
                     Title = "核心概念A",
                     ChapterPath = new List<string> { "第一章", "第一节" },
                     Importance = 0.8f,
-                    SnippetIds = new List<string> { "snippet_1" },
                     Type = "concept"
                 },
                 new KnowledgePointDto
@@ -188,7 +186,6 @@ public class KnowledgeBuildingTests
                     Title = "核心概念B",
                     ChapterPath = new List<string> { "第一章", "第二节" },
                     Importance = 0.6f,
-                    SnippetIds = new List<string> { "snippet_2" },
                     Type = "concept"
                 }
             }
@@ -234,7 +231,7 @@ public class KnowledgeBuildingTests
 
         // Assert
         result.KnowledgeSystem.Should().NotBeNull();
-        result.KnowledgeSystem.BookRootId.Should().Be(bookRootId);
+        result.KnowledgeSystem.BookHubId.Should().Be(bookRootId);
         // 当 LLM 失败时，ExtractKnowledgePointsAsync 会返回空列表
         result.KnowledgeSystem.KnowledgePoints.Should().NotBeNull();
     }
@@ -261,7 +258,7 @@ public class KnowledgeBuildingTests
                     Title = "Test KP",
                     ChapterPath = new List<string> { "第一章" },
                     Importance = 0.5f,
-                    SnippetIds = new List<string> { "snippet_1", "snippet_2" },
+
                     Type = "concept"
                 }
             }
@@ -278,7 +275,7 @@ public class KnowledgeBuildingTests
         var result = await _knowledgeBuilder.BuildAsync(bookRootId, rootPath, CancellationToken.None);
 
         // Assert
-        result.KnowledgeSystem.Snippets.Should().NotBeEmpty();
+        result.Documents.Should().NotBeEmpty();
     }
 
     private static List<Document> CreateTestDocuments()

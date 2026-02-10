@@ -224,9 +224,178 @@ Request Body:
 
 ---
 
-## 4. 知识系统存储相关
+## 5. 知识点内容相关
 
-### 4.1 加载知识系统
+### 5.1 获取知识点的精要速览
+
+**功能描述**：获取知识点的精要速览（定义、关键点、误区）
+
+**请求方式**：`GET /api/v1/knowledge-points/overview`
+
+**输入**：
+| 参数 | 类型 | 位置 | 说明 |
+|------|------|------|------|
+| kpId | string | query | 知识点 ID |
+
+**输出**：
+```json
+{
+  "id": "kp_001",
+  "title": "单一职责原则",
+  "overview": {
+    "definition": "单一职责原则（Single Responsibility Principle, SRP）是面向对象设计的基本原则之一...",
+    "keyPoints": [
+      "一个类应该只有一个引起变化的原因",
+      "职责分离",
+      "高内聚低耦合"
+    ],
+    "pitfalls": [
+      "职责划分过细导致类数量激增",
+      "过度设计"
+    ]
+  },
+  "generatedAt": "2025-01-15T10:30:00Z"
+}
+```
+
+### 5.2 获取知识点的原文对照
+
+**功能描述**：获取知识点关联的原文片段
+
+**请求方式**：`GET /api/v1/knowledge-points/source-content`
+
+**输入**：
+| 参数 | 类型 | 位置 | 说明 |
+|------|------|------|------|
+| kpId | string | query | 知识点 ID |
+
+**输出**：
+```json
+{
+  "id": "kp_001",
+  "title": "单一职责原则",
+  "sourceItems": [
+    {
+      "filePath": "g:\\books\\design-patterns\\ch01.md",
+      "fileName": "ch01.md",
+      "headingPath": ["第1章 面向对象设计原则", "1.1 单一职责原则"],
+      "lineStart": 15,
+      "lineEnd": 28,
+      "content": "单一职责原则是面向对象设计的基本原则之一，强调一个类应该只有一个引起变化的原因..."
+    }
+  ]
+}
+```
+
+### 5.3 获取知识点的层次展开内容
+
+**功能描述**：获取知识点的层次化内容（概览、详细、深入）
+
+**请求方式**：`GET /api/v1/knowledge-points/detailed-content`
+
+**输入**：
+| 参数 | 类型 | 位置 | 说明 |
+|------|------|------|------|
+| kpId | string | query | 知识点 ID |
+| level | string | query | 层次（brief/detailed/deep） |
+
+**输出**：
+```json
+{
+  "id": "kp_001",
+  "title": "单一职责原则",
+  "levels": {
+    "brief": {
+      "content": "单一职责原则是面向对象设计的基本原则之一，强调一个类应该只有一个引起变化的原因...",
+      "keyPoints": [
+        "一个类应该只有一个引起变化的原因",
+        "职责分离",
+        "高内聚低耦合"
+      ]
+    },
+    "detailed": {
+      "content": "单一职责原则要求一个类只负责一项职责，这样可以降低类的复杂度，提高代码的可读性和可维护性...",
+      "examples": [
+        "用户类只负责用户相关操作",
+        "订单类只负责订单相关操作"
+      ]
+    },
+    "deep": {
+      "content": "单一职责原则的核心是职责的划分，需要在实践中根据具体情况平衡职责的粒度...",
+      "relatedPatterns": [
+        "开闭原则",
+        "接口隔离原则"
+      ],
+      "bestPractices": [
+        "识别类的变化原因",
+        "合理划分职责边界"
+      ]
+    }
+  }
+}
+```
+
+### 5.4 获取知识点的幻灯片卡片
+
+**功能描述**：获取知识点的幻灯片卡片（支持自动生成 SpeechScript）
+
+**请求方式**：`GET /api/v1/knowledge-points/slide-cards`
+
+**输入**：
+| 参数 | 类型 | 位置 | 说明 |
+|------|------|------|------|
+| kpId | string | query | 知识点 ID |
+
+**输出**：
+```json
+{
+  "id": "kp_001",
+  "title": "单一职责原则",
+  "slideCards": [
+    {
+      "slideId": "slide_001",
+      "type": "cover",
+      "order": 0,
+      "title": "单一职责原则",
+      "htmlContent": "<h2>单一职责原则</h2><p>单一职责原则（Single Responsibility Principle, SRP）是面向对象设计的基本原则之一...</p>",
+      "speechScript": "单一职责原则是面向对象设计的基本原则之一，强调一个类应该只有一个引起变化的原因。",
+      "sourceReferences": [
+        {
+          "snippetId": "snippet_001",
+          "filePath": "g:\\books\\design-patterns\\ch01.md",
+          "headingPath": ["第1章 面向对象设计原则", "1.1 单一职责原则"],
+          "startLine": 15,
+          "endLine": 28,
+          "content": "单一职责原则是面向对象设计的基本原则之一..."
+        }
+      ],
+      "config": {
+        "allowSkip": true,
+        "requireComplete": false
+      }
+    },
+    {
+      "slideId": "slide_002",
+      "type": "explanation",
+      "order": 1,
+      "title": "详细解释",
+      "htmlContent": "<h2>详细解释</h2><p>单一职责原则要求一个类只负责一项职责，这样可以降低类的复杂度，提高代码的可读性和可维护性...</p>",
+      "speechScript": "单一职责原则要求一个类只负责一项职责，这样可以降低类的复杂度，提高代码的可读性和可维护性。",
+      "sourceReferences": [],
+      "config": {
+        "allowSkip": true,
+        "requireComplete": false
+      }
+    }
+  ]
+}
+```
+
+---
+
+## 6. 知识系统存储相关
+
+### 6.1 加载知识系统
 
 **功能描述**：加载指定书籍根目录的知识系统
 
@@ -282,7 +451,7 @@ Request Body:
 
 ---
 
-## 5. 错误响应
+## 7. 错误响应
 
 ### 通用错误格式
 

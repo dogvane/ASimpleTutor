@@ -7,14 +7,224 @@
 每个知识点（KnowledgePoint）包含：
 - `Summary` - 精要速览（定义、关键点、误区）
 - `Levels` - 层次化内容（L1/L2/L3）
-- `SnippetIds` - 原文片段引用
+- `DocId` - 关联的文档 ID
+- `ChapterPath` - 章节路径（用于定位原文片段）
 - `Relations` - 知识点关联关系
 
 幻灯片（Slides）直接将上述内容按类型组织返回给前端渲染。
 
 ---
 
-## 1. 获取知识点的幻灯片内容
+## 1. 获取知识点的精要速览
+
+### 请求
+
+**Endpoint**: `GET /api/v1/knowledge-points/overview`
+
+**Query Parameters**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|-----|------|-----|------|
+| kpId | string | 是 | 知识点 ID |
+
+**示例请求**:
+```http
+GET /api/v1/knowledge-points/overview?kpId=kp_001
+```
+
+### 响应
+
+**成功响应** (200 OK):
+
+```json
+{
+  "id": "kp_001",
+  "title": "神经元模型",
+  "overview": {
+    "definition": "神经元是神经网络的基本处理单元，它接收输入信号，进行加权求和，然后通过激活函数产生输出。",
+    "keyPoints": [
+      "接收多个输入信号",
+      "加权求和与偏置",
+      "激活函数非线性变换"
+    ],
+    "pitfalls": [
+      "神经元不等于大脑中的神经元",
+      "权重不是固定值，需要通过学习获得"
+    ]
+  },
+  "generatedAt": "2025-01-15T10:30:00Z"
+}
+```
+
+---
+
+## 2. 获取知识点的原文对照
+
+### 请求
+
+**Endpoint**: `GET /api/v1/knowledge-points/source-content`
+
+**Query Parameters**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|-----|------|-----|------|
+| kpId | string | 是 | 知识点 ID |
+
+**示例请求**:
+```http
+GET /api/v1/knowledge-points/source-content?kpId=kp_001
+```
+
+### 响应
+
+**成功响应** (200 OK):
+
+```json
+{
+  "id": "kp_001",
+  "title": "神经元模型",
+  "sourceItems": [
+    {
+      "filePath": "g:\\books\\neural-network.md",
+      "fileName": "neural-network.md",
+      "headingPath": ["第2章", "2.1节"],
+      "lineStart": 15,
+      "lineEnd": 20,
+      "content": "神经元是神经网络的基本处理单元，它接收输入信号，进行加权求和，然后通过激活函数产生输出。"
+    }
+  ]
+}
+```
+
+---
+
+## 3. 获取知识点的层次展开内容
+
+### 请求
+
+**Endpoint**: `GET /api/v1/knowledge-points/detailed-content`
+
+**Query Parameters**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|-----|------|-----|------|
+| kpId | string | 是 | 知识点 ID |
+| level | string | 否 | 层次（brief/detailed/deep） |
+
+**示例请求**:
+```http
+GET /api/v1/knowledge-points/detailed-content?kpId=kp_001
+```
+
+### 响应
+
+**成功响应** (200 OK):
+
+```json
+{
+  "id": "kp_001",
+  "title": "神经元模型",
+  "levels": {
+    "brief": {
+      "content": "神经元的数学表达如下：y = f(Σ wᵢxᵢ + b)",
+      "keyPoints": [
+        "接收多个输入信号",
+        "加权求和与偏置",
+        "激活函数非线性变换"
+      ]
+    },
+    "detailed": {
+      "content": "神经元的输出计算分为三个步骤：1. 加权求和 2. 偏置叠加 3. 非线性变换",
+      "examples": [
+        "Sigmoid: σ(x) = 1/(1+e⁻ˣ)",
+        "ReLU: max(0,x)"
+      ]
+    },
+    "deep": {
+      "content": "如果没有激活函数，无论网络有多少层，最终都可以简化为线性变换。激活函数引入的非线性是神经网络能够学习复杂模式的关键。",
+      "relatedPatterns": [
+        "梯度消失问题",
+        "激活函数选择策略"
+      ],
+      "bestPractices": [
+        "隐藏层优先使用 ReLU",
+        "输出层根据任务选择激活函数"
+      ]
+    }
+  }
+}
+```
+
+---
+
+## 4. 获取知识点的幻灯片卡片
+
+### 请求
+
+**Endpoint**: `GET /api/v1/knowledge-points/slide-cards`
+
+**Query Parameters**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|-----|------|-----|------|
+| kpId | string | 是 | 知识点 ID |
+
+**示例请求**:
+```http
+GET /api/v1/knowledge-points/slide-cards?kpId=kp_001
+```
+
+### 响应
+
+**成功响应** (200 OK):
+
+```json
+{
+  "id": "kp_001",
+  "title": "神经元模型",
+  "slideCards": [
+    {
+      "slideId": "slide_001",
+      "type": "cover",
+      "order": 0,
+      "title": "神经元模型",
+      "htmlContent": "<h2>神经元模型</h2><p>神经元是神经网络的基本处理单元...</p>",
+      "speechScript": "神经元是神经网络的基本处理单元，它接收输入信号，进行加权求和，然后通过激活函数产生输出。",
+      "sourceReferences": [
+        {
+          "snippetId": "snippet_001",
+          "filePath": "g:\\books\\neural-network.md",
+          "headingPath": ["第2章", "2.1节"],
+          "startLine": 15,
+          "endLine": 20,
+          "content": "神经元是神经网络的基本处理单元..."
+        }
+      ],
+      "config": {
+        "allowSkip": true,
+        "requireComplete": false
+      }
+    },
+    {
+      "slideId": "slide_002",
+      "type": "explanation",
+      "order": 1,
+      "title": "L1 概览",
+      "htmlContent": "<h2>L1 概览</h2><p>神经元的数学表达如下...</p>",
+      "speechScript": "神经元的数学表达如下：y = f(Σ wᵢxᵢ + b)",
+      "sourceReferences": [],
+      "config": {
+        "allowSkip": true,
+        "requireComplete": false
+      }
+    }
+  ]
+}
+```
+
+---
+
+## 5. 获取知识点的完整幻灯片内容（旧接口，已废弃）
 
 ### 请求
 
@@ -165,7 +375,7 @@ GET /api/v1/knowledge-points/slides?kpId=kp_001
 | `explanation` | 概念解释 | `Levels[0]` (L1) |
 | `detail` | 详细内容 | `Levels[1]` (L2) |
 | `deepDive` | 深入探讨 | `Levels[2]` (L3) |
-| `source` | 原文对照 | `SnippetIds` → Snippets |
+| `source` | 原文对照 | `DocId + ChapterPath → Document.Sections` |
 | `quiz` | 随堂测验 | `Exercises` (如有) |
 | `relations` | 知识关联 | `Relations` |
 | `summary` | 总结回顾 | 可选 |

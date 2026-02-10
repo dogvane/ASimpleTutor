@@ -39,7 +39,7 @@ public class DataModelTests
         var document = new Document
         {
             DocId = "doc1",
-            BookRootId = "book1",
+            BookHubId = "book1",
             Path = "/path/to/doc.md",
             Title = "Test Document",
             Sections = sections,
@@ -48,7 +48,7 @@ public class DataModelTests
 
         // Assert
         document.DocId.Should().Be("doc1");
-        document.BookRootId.Should().Be("book1");
+        document.BookHubId.Should().Be("book1");
         document.Path.Should().Be("/path/to/doc.md");
         document.Title.Should().Be("Test Document");
         document.Sections.Should().BeSameAs(sections);
@@ -142,8 +142,6 @@ public class DataModelTests
         kp.ChapterPath.Should().NotBeNull();
         kp.ChapterPath.Should().BeEmpty();
         kp.Importance.Should().Be(0);
-        kp.SnippetIds.Should().NotBeNull();
-        kp.SnippetIds.Should().BeEmpty();
     }
 
     [Fact]
@@ -153,22 +151,20 @@ public class DataModelTests
         var kp = new KnowledgePoint
         {
             KpId = "kp1",
-            BookRootId = "book1",
+            BookHubId = "book1",
             Title = "Test Knowledge Point",
             Aliases = new List<string> { "alias1", "alias2" },
             ChapterPath = new List<string> { "Chapter 1", "Section 1" },
-            Importance = 0.8f,
-            SnippetIds = new List<string> { "snippet1", "snippet2" }
+            Importance = 0.8f
         };
 
         // Assert
         kp.KpId.Should().Be("kp1");
-        kp.BookRootId.Should().Be("book1");
+        kp.BookHubId.Should().Be("book1");
         kp.Title.Should().Be("Test Knowledge Point");
         kp.Aliases.Should().ContainInOrder("alias1", "alias2");
         kp.ChapterPath.Should().ContainInOrder("Chapter 1", "Section 1");
         kp.Importance.Should().Be(0.8f);
-        kp.SnippetIds.Should().ContainInOrder("snippet1", "snippet2");
     }
 
     [Fact]
@@ -178,8 +174,7 @@ public class DataModelTests
         var kp = new KnowledgePoint
         {
             Aliases = new List<string>(),
-            ChapterPath = new List<string>(),
-            SnippetIds = new List<string>()
+            ChapterPath = new List<string>()
         };
 
         // Assert
@@ -187,8 +182,6 @@ public class DataModelTests
         kp.Aliases.Should().BeEmpty();
         kp.ChapterPath.Should().NotBeNull();
         kp.ChapterPath.Should().BeEmpty();
-        kp.SnippetIds.Should().NotBeNull();
-        kp.SnippetIds.Should().BeEmpty();
     }
 
     #endregion
@@ -203,7 +196,6 @@ public class DataModelTests
 
         // Assert
         snippet.SnippetId.Should().BeEmpty();
-        snippet.BookRootId.Should().BeEmpty();
         snippet.DocId.Should().BeEmpty();
         snippet.FilePath.Should().BeEmpty();
         snippet.HeadingPath.Should().NotBeNull();
@@ -220,7 +212,6 @@ public class DataModelTests
         var snippet = new SourceSnippet
         {
             SnippetId = "snippet1",
-            BookRootId = "book1",
             DocId = "doc1",
             FilePath = "/path/to/doc.md",
             HeadingPath = new List<string> { "Chapter 1", "Section 1" },
@@ -231,7 +222,6 @@ public class DataModelTests
 
         // Assert
         snippet.SnippetId.Should().Be("snippet1");
-        snippet.BookRootId.Should().Be("book1");
         snippet.DocId.Should().Be("doc1");
         snippet.FilePath.Should().Be("/path/to/doc.md");
         snippet.HeadingPath.Should().ContainInOrder("Chapter 1", "Section 1");
@@ -251,11 +241,9 @@ public class DataModelTests
         var ks = new KnowledgeSystem();
 
         // Assert
-        ks.BookRootId.Should().BeEmpty();
+        ks.BookHubId.Should().BeEmpty();
         ks.KnowledgePoints.Should().NotBeNull();
         ks.KnowledgePoints.Should().BeEmpty();
-        ks.Snippets.Should().NotBeNull();
-        ks.Snippets.Should().BeEmpty();
     }
 
     [Fact]
@@ -265,22 +253,17 @@ public class DataModelTests
         var kps = new List<KnowledgePoint> {
             new KnowledgePoint { KpId = "kp1", Title = "KP1" }
         };
-        var snippets = new Dictionary<string, SourceSnippet> {
-            { "snippet1", new SourceSnippet { SnippetId = "snippet1", Content = "Content 1" } }
-        };
 
         // Act
         var ks = new KnowledgeSystem
         {
-            BookRootId = "book1",
-            KnowledgePoints = kps,
-            Snippets = snippets
+            BookHubId = "book1",
+            KnowledgePoints = kps
         };
 
         // Assert
-        ks.BookRootId.Should().Be("book1");
+        ks.BookHubId.Should().Be("book1");
         ks.KnowledgePoints.Should().BeSameAs(kps);
-        ks.Snippets.Should().BeSameAs(snippets);
     }
 
     #endregion

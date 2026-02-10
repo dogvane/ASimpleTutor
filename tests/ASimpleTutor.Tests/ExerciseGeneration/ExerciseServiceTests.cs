@@ -46,14 +46,13 @@ public class ExerciseServiceTests
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
-        kp.BookRootId = "book_001_test6"; // 使用唯一的 BookRootId 避免文件被占用
-        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        kp.BookHubId = "book_001_test6"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = CreateTestDocuments();
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var llmResponse = CreateValidExercisesResponse();
         _llmServiceMock
@@ -80,14 +79,13 @@ public class ExerciseServiceTests
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
-        kp.BookRootId = "book_001_test7"; // 使用唯一的 BookRootId 避免文件被占用
-        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        kp.BookHubId = "book_001_test7"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = CreateTestDocuments();
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var llmResponse = CreateValidExercisesResponse();
         _llmServiceMock
@@ -113,18 +111,17 @@ public class ExerciseServiceTests
         {
             KpId = "kp_empty",
             Title = "测试知识点",
-            SnippetIds = new List<string>(),
-            BookRootId = "book_001"
+            BookHubId = "book_001"
         };
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = new Dictionary<string, SourceSnippet>()
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = CreateTestDocuments();
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var llmResponse = CreateValidExercisesResponse();
         _llmServiceMock
@@ -150,14 +147,13 @@ public class ExerciseServiceTests
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
-        kp.BookRootId = "book_001_test10"; // 使用唯一的 BookRootId 避免文件被占用
-        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        kp.BookHubId = "book_001_test10"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = CreateTestDocuments();
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         _llmServiceMock
             .Setup(s => s.ChatJsonAsync<ExercisesResponse>(
@@ -183,12 +179,13 @@ public class ExerciseServiceTests
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
+        kp.BookHubId = "book_001";
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = CreateTestDocuments();
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         _llmServiceMock
             .Setup(s => s.ChatJsonAsync<ExercisesResponse>(
@@ -274,19 +271,17 @@ public class ExerciseServiceTests
             Title = "",
             ChapterPath = new List<string> { "第一章" },
             Importance = 0.5f,
-            SnippetIds = new List<string> { "snippet_001" },
-            BookRootId = "book_001"
+            BookHubId = "book_001"
         };
-        var snippets = CreateTestSnippets();
+        var documents = CreateTestDocuments();
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var llmResponse = CreateValidExercisesResponse();
         _llmServiceMock
@@ -312,12 +307,13 @@ public class ExerciseServiceTests
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
+        kp.BookHubId = "book_001";
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = CreateTestDocuments();
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         // Act
         var result = await _service.GenerateAsync(kp, 0, CancellationToken.None);
@@ -336,12 +332,11 @@ public class ExerciseServiceTests
         return new KnowledgePoint
         {
             KpId = "kp_001",
-            BookRootId = "book_001",
+            BookHubId = "book_001",
             Title = "什么是 Markdown",
             Aliases = new List<string> { "MD", "标记语言" },
             ChapterPath = new List<string> { "第一章", "1.1 基础概念" },
-            Importance = 0.8f,
-            SnippetIds = new List<string> { "snippet_001", "snippet_002" }
+            Importance = 0.8f
         };
     }
 
@@ -352,7 +347,6 @@ public class ExerciseServiceTests
             new SourceSnippet
             {
                 SnippetId = "snippet_001",
-                BookRootId = "book_001",
                 DocId = "doc_001",
                 FilePath = "/docs/ch01.md",
                 HeadingPath = new List<string> { "第一章", "1.1 基础概念" },
@@ -363,13 +357,51 @@ public class ExerciseServiceTests
             new SourceSnippet
             {
                 SnippetId = "snippet_002",
-                BookRootId = "book_001",
                 DocId = "doc_001",
                 FilePath = "/docs/ch01.md",
                 HeadingPath = new List<string> { "第一章", "1.2 标题语法" },
                 Content = "Markdown 支持六级标题，使用 # 符号表示。# 后跟空格再跟标题文本。一级标题使用一个 #，二级标题使用两个 #，以此类推。",
                 StartLine = 20,
                 EndLine = 25
+            }
+        };
+    }
+
+    private static List<Document> CreateTestDocuments()
+    {
+        return new List<Document>
+        {
+            new Document
+            {
+                DocId = "doc_001",
+                BookHubId = "book_001",
+                Path = "/docs/ch01.md",
+                Title = "第一章 基础概念",
+                Sections = new List<Section>
+                {
+                    new Section
+                    {
+                        SectionId = "section_001",
+                        HeadingPath = new List<string> { "第一章", "1.1 基础概念" },
+                        StartLine = 10,
+                        EndLine = 15,
+                        OriginalLength = 100,
+                        EffectiveLength = 80,
+                        FilteredLength = 20,
+                        IsExcluded = false
+                    },
+                    new Section
+                    {
+                        SectionId = "section_002",
+                        HeadingPath = new List<string> { "第一章", "1.2 标题语法" },
+                        StartLine = 20,
+                        EndLine = 25,
+                        OriginalLength = 100,
+                        EffectiveLength = 80,
+                        FilteredLength = 20,
+                        IsExcluded = false
+                    }
+                }
             }
         };
     }

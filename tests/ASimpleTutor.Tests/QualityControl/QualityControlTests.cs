@@ -40,12 +40,7 @@ public class QualityControlValidator
                     $"标题为无意义章节名: {kp.Title}"));
             }
 
-            // 检查证据片段
-            if (kp.SnippetIds == null || kp.SnippetIds.Count == 0)
-            {
-                issues.Add(new QualityIssue(kp.KpId, QualityIssueType.MissingEvidence,
-                    "知识点没有关联证据片段"));
-            }
+
 
             // 检查重要性评分范围
             if (kp.Importance < 0.0f || kp.Importance > 1.0f)
@@ -122,14 +117,14 @@ public class QualityControlTests
                 KpId = "kp_0001",
                 Title = "核心概念",
                 Importance = 0.8f,
-                SnippetIds = new List<string> { "snippet_1" }
+
             },
             new KnowledgePoint
             {
                 KpId = "kp_0002",
                 Title = "重要术语",
                 Importance = 0.6f,
-                SnippetIds = new List<string> { "snippet_2" }
+
             }
         };
 
@@ -152,7 +147,7 @@ public class QualityControlTests
                 KpId = "kp_0001",
                 Title = longTitle,
                 Importance = 0.5f,
-                SnippetIds = new List<string> { "snippet_1" }
+
             }
         };
 
@@ -174,7 +169,7 @@ public class QualityControlTests
                 KpId = "kp_0001",
                 Title = "",
                 Importance = 0.5f,
-                SnippetIds = new List<string> { "snippet_1" }
+
             }
         };
 
@@ -196,21 +191,20 @@ public class QualityControlTests
                 KpId = "kp_0001",
                 Title = "概述",
                 Importance = 0.5f,
-                SnippetIds = new List<string> { "snippet_1" }
+
             },
             new KnowledgePoint
             {
                 KpId = "kp_0002",
                 Title = "总结",
                 Importance = 0.5f,
-                SnippetIds = new List<string> { "snippet_2" }
             },
             new KnowledgePoint
             {
                 KpId = "kp_0003",
                 Title = "简介",
                 Importance = 0.5f,
-                SnippetIds = new List<string> { "snippet_3" }
+
             }
         };
 
@@ -223,35 +217,6 @@ public class QualityControlTests
     }
 
     [Fact]
-    public void Validate_WithMissingEvidence_ShouldDetectIssue()
-    {
-        // Arrange
-        var kps = new List<KnowledgePoint>
-        {
-            new KnowledgePoint
-            {
-                KpId = "kp_0001",
-                Title = "没有证据的知识点",
-                Importance = 0.5f,
-                SnippetIds = new List<string>()
-            },
-            new KnowledgePoint
-            {
-                KpId = "kp_0002",
-                Title = "另一个无证据知识点",
-                Importance = 0.5f,
-                SnippetIds = null!
-            }
-        };
-
-        // Act
-        var issues = _validator.Validate(kps);
-
-        // Assert
-        issues.Should().Contain(i => i.Type == QualityIssueType.MissingEvidence);
-    }
-
-    [Fact]
     public void Validate_WithInvalidImportance_ShouldDetectIssue()
     {
         // Arrange
@@ -261,15 +226,13 @@ public class QualityControlTests
             {
                 KpId = "kp_0001",
                 Title = "重要性过高",
-                Importance = 1.5f,
-                SnippetIds = new List<string> { "snippet_1" }
+                Importance = 1.5f
             },
             new KnowledgePoint
             {
                 KpId = "kp_0002",
                 Title = "重要性为负",
-                Importance = -0.1f,
-                SnippetIds = new List<string> { "snippet_2" }
+                Importance = -0.1f
             }
         };
 
@@ -286,10 +249,10 @@ public class QualityControlTests
         // Arrange
         var kps = new List<KnowledgePoint>
         {
-            new KnowledgePoint { KpId = "kp_0001", Title = "有效知识点", Importance = 0.5f, SnippetIds = new List<string> { "s1" } },
-            new KnowledgePoint { KpId = "kp_0002", Title = "概述", Importance = 0.5f, SnippetIds = new List<string> { "s2" } }, // 无效
-            new KnowledgePoint { KpId = "kp_0003", Title = "另一个有效点", Importance = 0.8f, SnippetIds = new List<string> { "s3" } },
-            new KnowledgePoint { KpId = "kp_0004", Title = "", Importance = 0.5f, SnippetIds = new List<string> { "s4" } } // 无效
+            new KnowledgePoint { KpId = "kp_0001", Title = "有效知识点", Importance = 0.5f },
+            new KnowledgePoint { KpId = "kp_0002", Title = "概述", Importance = 0.5f }, // 无效
+            new KnowledgePoint { KpId = "kp_0003", Title = "另一个有效点", Importance = 0.8f },
+            new KnowledgePoint { KpId = "kp_0004", Title = "", Importance = 0.5f } // 无效
         };
 
         // Act
@@ -307,19 +270,18 @@ public class QualityControlTests
         // Arrange
         var kps = new List<KnowledgePoint>
         {
-            new KnowledgePoint { KpId = "kp_0001", Title = "有效知识点", Importance = 0.5f, SnippetIds = new List<string> { "s1" } },
-            new KnowledgePoint { KpId = "kp_0002", Title = new string('X', 70), Importance = 0.5f, SnippetIds = new List<string> { "s2" } },
-            new KnowledgePoint { KpId = "kp_0003", Title = "概述", Importance = 0.5f, SnippetIds = new List<string> { "s3" } },
-            new KnowledgePoint { KpId = "kp_0004", Title = "无证据", Importance = 0.5f, SnippetIds = new List<string>() }
+            new KnowledgePoint { KpId = "kp_0001", Title = "有效知识点", Importance = 0.5f },
+            new KnowledgePoint { KpId = "kp_0002", Title = new string('X', 70), Importance = 0.5f },
+            new KnowledgePoint { KpId = "kp_0003", Title = "概述", Importance = 0.5f },
+            new KnowledgePoint { KpId = "kp_0004", Title = "无证据", Importance = 0.5f }
         };
 
         // Act
         var issues = _validator.Validate(kps);
 
         // Assert
-        issues.Should().HaveCount(3); // 3个问题
+        issues.Should().HaveCount(2); // 2个问题（标题过长和无意义标题）
         issues.Select(i => i.KpId).Should().Contain("kp_0002");
         issues.Select(i => i.KpId).Should().Contain("kp_0003");
-        issues.Select(i => i.KpId).Should().Contain("kp_0004");
     }
 }

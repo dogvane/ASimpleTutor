@@ -25,7 +25,6 @@ public class LearningPackTests
         lp.KpId.Should().Be(string.Empty);
         lp.Summary.Should().NotBeNull();
         lp.Levels.Should().NotBeNull();
-        lp.SnippetIds.Should().NotBeNull();
         lp.RelatedKpIds.Should().NotBeNull();
     }
 
@@ -46,7 +45,7 @@ public class LearningPackTests
             {
                 new ContentLevel { Level = 1, Title = "概览", Content = "内容" }
             },
-            SnippetIds = new List<string> { "s1", "s2" },
+
             RelatedKpIds = new List<string> { "kp_related" }
         };
 
@@ -54,7 +53,7 @@ public class LearningPackTests
         lp.KpId.Should().Be("test_kp");
         lp.Summary.Definition.Should().Be("测试定义");
         lp.Levels.Should().HaveCount(1);
-        lp.SnippetIds.Should().HaveCount(2);
+
         lp.RelatedKpIds.Should().HaveCount(1);
     }
 
@@ -75,7 +74,7 @@ public class LearningPackTests
             {
                 new ContentLevel { Level = 1, Title = "概览", Content = "内容" }
             },
-            SnippetIds = new List<string> { "s1" },
+
             RelatedKpIds = new List<string>()
         };
 
@@ -251,7 +250,7 @@ public class LearningPackTests
                 new ContentLevel { Level = 2, Title = "详细", Content = "详细说明" },
                 new ContentLevel { Level = 3, Title = "深入", Content = "深入分析" }
             },
-            SnippetIds = new List<string> { "s1", "s2", "s3" },
+
             RelatedKpIds = new List<string> { "kp_related_1" }
         };
 
@@ -267,7 +266,6 @@ public class LearningPackTests
         json.Should().Contain("概览");
         json.Should().Contain("详细");
         json.Should().Contain("深入");
-        json.Should().Contain("s1");
     }
 
     [Fact]
@@ -279,7 +277,7 @@ public class LearningPackTests
             KpId = "kp_empty",
             Summary = new Summary(),
             Levels = new List<ContentLevel>(),
-            SnippetIds = new List<string>(),
+
             RelatedKpIds = new List<string>()
         };
 
@@ -310,7 +308,7 @@ public class LearningPackTests
                 new ContentLevel { Level = 1, Title = "L1", Content = "L1内容" },
                 new ContentLevel { Level = 2, Title = "L2", Content = "L2内容" }
             },
-            SnippetIds = new List<string> { "s1", "s2" },
+
             RelatedKpIds = new List<string>()
         };
 
@@ -324,6 +322,5 @@ public class LearningPackTests
         deserialized.Summary.Definition.Should().Be(original.Summary.Definition);
         deserialized.Summary.KeyPoints.Should().HaveCount(2);
         deserialized.Levels.Should().HaveCount(2);
-        deserialized.SnippetIds.Should().HaveCount(2);
     }
 }

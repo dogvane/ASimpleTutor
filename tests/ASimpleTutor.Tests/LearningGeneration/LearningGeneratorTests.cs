@@ -42,18 +42,16 @@ public class LearningGeneratorTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        var snippets = CreateTestSnippets();
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
-        kp.BookRootId = "book_001_test9"; // 使用唯一的 BookRootId 避免文件被占用
-        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        kp.BookHubId = "book_001_test9"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var (testFilePath, documents) = CreateTestDocuments(kp.BookHubId);
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
@@ -69,7 +67,6 @@ public class LearningGeneratorTests
         // Assert
         result.Should().NotBeNull();
         result.KpId.Should().Be(kp.KpId);
-        result.SnippetIds.Should().NotBeEmpty();
     }
 
     [Fact]
@@ -77,18 +74,16 @@ public class LearningGeneratorTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        var snippets = CreateTestSnippets();
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
-        kp.BookRootId = "book_001_test11"; // 使用唯一的 BookRootId 避免文件被占用
-        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        kp.BookHubId = "book_001_test11"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var (testFilePath, documents) = CreateTestDocuments(kp.BookHubId);
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
@@ -111,18 +106,50 @@ public class LearningGeneratorTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        var snippets = CreateTestSnippets();
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
-        kp.BookRootId = "book_001_test12"; // 使用唯一的 BookRootId 避免文件被占用
-        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        kp.BookHubId = "book_001_test12"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = new List<Document>
+        {
+            new Document
+            {
+                DocId = "doc_001",
+                BookHubId = kp.BookHubId,
+                Path = "/docs/ch01.md",
+                Title = "第一章 基础概念",
+                Sections = new List<Section>
+                {
+                    new Section
+                    {
+                        SectionId = "section_001",
+                        HeadingPath = new List<string> { "第一章", "1.1 基础概念" },
+                        StartLine = 10,
+                        EndLine = 15,
+                        OriginalLength = 100,
+                        EffectiveLength = 80,
+                        FilteredLength = 20,
+                        IsExcluded = false
+                    },
+                    new Section
+                    {
+                        SectionId = "section_002",
+                        HeadingPath = new List<string> { "第一章", "1.2 标题语法" },
+                        StartLine = 20,
+                        EndLine = 25,
+                        OriginalLength = 100,
+                        EffectiveLength = 80,
+                        FilteredLength = 20,
+                        IsExcluded = false
+                    }
+                }
+            }
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
@@ -146,18 +173,16 @@ public class LearningGeneratorTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        var snippets = CreateTestSnippets();
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
-        kp.BookRootId = "book_001_test13"; // 使用唯一的 BookRootId 避免文件被占用
-        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        kp.BookHubId = "book_001_test13"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var (testFilePath, documents) = CreateTestDocuments(kp.BookHubId);
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
@@ -180,18 +205,16 @@ public class LearningGeneratorTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        var snippets = CreateTestSnippets();
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
-        kp.BookRootId = "book_001_test14"; // 使用唯一的 BookRootId 避免文件被占用
-        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        kp.BookHubId = "book_001_test14"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var (testFilePath, documents) = CreateTestDocuments(kp.BookHubId);
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
@@ -219,18 +242,16 @@ public class LearningGeneratorTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        var snippets = CreateTestSnippets();
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
-        kp.BookRootId = "book_001_test15"; // 使用唯一的 BookRootId 避免文件被占用
-        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        kp.BookHubId = "book_001_test15"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var (testFilePath, documents) = CreateTestDocuments(kp.BookHubId);
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
@@ -251,79 +272,6 @@ public class LearningGeneratorTests
 
     #endregion
 
-    #region 原文片段关联测试
-
-    [Fact]
-    public async Task GenerateAsync_ShouldAssociateSnippetIds()
-    {
-        // Arrange
-        var kp = CreateTestKnowledgePoint();
-        var snippets = CreateTestSnippets();
-
-        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
-        // 我们需要先保存知识系统，然后才能加载它
-        var knowledgeSystem = new KnowledgeSystem
-        {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
-        };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
-
-        var llmResponse = CreateValidLLMResponse();
-        _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(llmResponse);
-
-        // Act
-        var result = await _generator.GenerateAsync(kp, CancellationToken.None);
-
-        // Assert
-        result.SnippetIds.Should().NotBeEmpty();
-        result.SnippetIds.Should().Contain("snippet_001");
-        result.SnippetIds.Should().Contain("snippet_002");
-    }
-
-    [Fact]
-    public async Task GenerateAsync_WithEmptySnippets_ShouldAssociateEmptyList()
-    {
-        // Arrange
-        var kp = new KnowledgePoint
-        {
-            KpId = "kp_empty",
-            Title = "测试知识点",
-            SnippetIds = new List<string>(),
-            BookRootId = "book_001"
-        };
-
-        // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
-        // 我们需要先保存知识系统，然后才能加载它
-        var knowledgeSystem = new KnowledgeSystem
-        {
-            BookRootId = kp.BookRootId,
-            Snippets = new Dictionary<string, SourceSnippet>()
-        };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
-
-        var llmResponse = CreateValidLLMResponse();
-        _llmServiceMock
-            .Setup(s => s.ChatJsonAsync<LearningContentDto>(
-                It.IsAny<string>(),
-                It.IsAny<string>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(llmResponse);
-
-        // Act
-        var result = await _generator.GenerateAsync(kp, CancellationToken.None);
-
-        // Assert
-        result.SnippetIds.Should().BeEmpty();
-    }
-
-    #endregion
-
     #region 降级策略测试
 
     [Fact]
@@ -331,16 +279,16 @@ public class LearningGeneratorTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        var snippets = CreateTestSnippets();
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
+        kp.BookHubId = "book_001_test16"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var (testFilePath, documents) = CreateTestDocuments(kp.BookHubId);
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         _llmServiceMock
             .Setup(s => s.ChatJsonAsync<LearningContentDto>(
@@ -363,16 +311,16 @@ public class LearningGeneratorTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        var snippets = CreateTestSnippets();
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
+        kp.BookHubId = "book_001_test17"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var (testFilePath, documents) = CreateTestDocuments(kp.BookHubId);
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         _llmServiceMock
             .Setup(s => s.ChatJsonAsync<LearningContentDto>(
@@ -395,16 +343,16 @@ public class LearningGeneratorTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        var snippets = CreateTestSnippets();
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
+        kp.BookHubId = "book_001_test18"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var (testFilePath, documents) = CreateTestDocuments(kp.BookHubId);
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         _llmServiceMock
             .Setup(s => s.ChatJsonAsync<LearningContentDto>(
@@ -418,7 +366,7 @@ public class LearningGeneratorTests
 
         // Assert
         result.Summary.KeyPoints.Should().NotBeNull();
-        // 降级策略会从原文片段提取句子作为要点
+        // 降级策略会从文档内容提取句子作为要点
     }
 
     [Fact]
@@ -426,16 +374,50 @@ public class LearningGeneratorTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        var snippets = CreateTestSnippets();
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
+        kp.BookHubId = "book_001_test19"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = new List<Document>
+        {
+            new Document
+            {
+                DocId = "doc_001",
+                BookHubId = kp.BookHubId,
+                Path = "/docs/ch01.md",
+                Title = "第一章 基础概念",
+                Sections = new List<Section>
+                {
+                    new Section
+                    {
+                        SectionId = "section_001",
+                        HeadingPath = new List<string> { "第一章", "1.1 基础概念" },
+                        StartLine = 10,
+                        EndLine = 15,
+                        OriginalLength = 100,
+                        EffectiveLength = 80,
+                        FilteredLength = 20,
+                        IsExcluded = false
+                    },
+                    new Section
+                    {
+                        SectionId = "section_002",
+                        HeadingPath = new List<string> { "第一章", "1.2 标题语法" },
+                        StartLine = 20,
+                        EndLine = 25,
+                        OriginalLength = 100,
+                        EffectiveLength = 80,
+                        FilteredLength = 20,
+                        IsExcluded = false
+                    }
+                }
+            }
+        };
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         _llmServiceMock
             .Setup(s => s.ChatJsonAsync<LearningContentDto>(
@@ -466,19 +448,17 @@ public class LearningGeneratorTests
             Title = "",
             ChapterPath = new List<string> { "第一章" },
             Importance = 0.5f,
-            SnippetIds = new List<string> { "snippet_001" },
-            BookRootId = "book_001"
+            BookHubId = "book_001_test20"
         };
-        var snippets = CreateTestSnippets();
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var (testFilePath, documents) = CreateTestDocuments(kp.BookHubId);
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         _llmServiceMock
             .Setup(s => s.ChatJsonAsync<LearningContentDto>(
@@ -496,34 +476,32 @@ public class LearningGeneratorTests
     }
 
     [Fact]
-    public async Task GenerateAsync_WithNoSnippets_ShouldUseFallback()
+    public async Task GenerateAsync_WithNoDocuments_ShouldUseFallback()
     {
         // Arrange
         var kp = new KnowledgePoint
         {
             KpId = "kp_003",
-            Title = "无片段知识点",
+            Title = "无文档知识点",
             ChapterPath = new List<string> { "第一章" },
             Importance = 0.5f,
-            SnippetIds = new List<string>(),
-            BookRootId = "book_001"
+            BookHubId = "book_001_test21"
         };
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = new Dictionary<string, SourceSnippet>()
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = new List<Document>();
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         // Act
         var result = await _generator.GenerateAsync(kp, CancellationToken.None);
 
         // Assert
         result.Should().NotBeNull();
-        result.SnippetIds.Should().BeEmpty();
     }
 
     #endregion
@@ -535,16 +513,16 @@ public class LearningGeneratorTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        var snippets = CreateTestSnippets();
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
+        kp.BookHubId = "book_001_test22"; // 使用唯一的 BookHubId 避免文件被占用
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var (testFilePath, documents) = CreateTestDocuments(kp.BookHubId);
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var llmResponse = CreateValidLLMResponse();
         _llmServiceMock
@@ -571,41 +549,12 @@ public class LearningGeneratorTests
         return new KnowledgePoint
         {
             KpId = "kp_001",
-            BookRootId = "book_001",
+            BookHubId = "book_001",
             Title = "什么是 Markdown",
             Aliases = new List<string> { "MD", "标记语言" },
             ChapterPath = new List<string> { "第一章", "1.1 基础概念" },
             Importance = 0.8f,
-            SnippetIds = new List<string> { "snippet_001", "snippet_002" }
-        };
-    }
-
-    private static List<SourceSnippet> CreateTestSnippets()
-    {
-        return new List<SourceSnippet>
-        {
-            new SourceSnippet
-            {
-                SnippetId = "snippet_001",
-                BookRootId = "book_001",
-                DocId = "doc_001",
-                FilePath = "/docs/ch01.md",
-                HeadingPath = new List<string> { "第一章", "1.1 基础概念" },
-                Content = "Markdown 是一种轻量级标记语言，由 John Gruber 于 2004 年创建。它的设计目标是易读易写。Markdown 语法简单直观，通过简单的符号来标记文本格式。",
-                StartLine = 10,
-                EndLine = 15
-            },
-            new SourceSnippet
-            {
-                SnippetId = "snippet_002",
-                BookRootId = "book_001",
-                DocId = "doc_001",
-                FilePath = "/docs/ch01.md",
-                HeadingPath = new List<string> { "第一章", "1.2 标题语法" },
-                Content = "Markdown 支持六级标题，使用 # 符号表示。# 后跟空格再跟标题文本。一级标题使用一个 #，二级标题使用两个 #，以此类推。",
-                StartLine = 20,
-                EndLine = 25
-            }
+            DocId = "doc_001"
         };
     }
 
@@ -635,6 +584,65 @@ public class LearningGeneratorTests
                 new ContentLevel { Level = 3, Title = "深入", Content = "深入了解 Markdown 的扩展语法和最佳实践..." }
             }
         };
+    }
+
+    private static (string filePath, List<Document> documents) CreateTestDocuments(string bookHubId)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "ASimpleTutorTests", Guid.NewGuid().ToString());
+        Directory.CreateDirectory(tempDir);
+
+        var filePath = Path.Combine(tempDir, "test_chapter.md");
+        File.WriteAllText(filePath, @"# 第一章 基础概念
+
+## 1.1 基础概念
+
+Markdown 是一种轻量级标记语言，由 John Gruber 于 2004 年创建。它的设计目标是易读易写。Markdown 语法简单直观，通过简单的符号来标记文本格式。Markdown 支持粗体、斜体、标题、列表、链接、图片等基本格式，可以方便地转换为 HTML、PDF 等格式。
+
+## 1.2 标题语法
+
+Markdown 支持六级标题，使用 # 符号表示。# 后跟空格再跟标题文本。一级标题使用一个 #，二级标题使用两个 #，以此类推。Markdown 的标题语法使得文档结构清晰，便于阅读和导航。在使用标题时，建议按照层次结构组织内容，避免跳级使用标题。
+
+## 1.3 扩展语法
+
+Markdown 的扩展语法包括表格、删除线、任务列表等，这些语法通过不同的 Markdown 解析器实现。常见的扩展包括 GitHub Flavored Markdown (GFM)、CommonMark 等，这些扩展增强了 Markdown 的功能，使其更适合编写技术文档和协作。");
+
+        var documents = new List<Document>
+        {
+            new Document
+            {
+                DocId = "doc_001",
+                BookHubId = bookHubId,
+                Path = filePath,
+                Title = "第一章 基础概念",
+                Sections = new List<Section>
+                {
+                    new Section
+                    {
+                        SectionId = "section_001",
+                        HeadingPath = new List<string> { "第一章", "1.1 基础概念" },
+                        StartLine = 4,
+                        EndLine = 5,
+                        OriginalLength = 100,
+                        EffectiveLength = 80,
+                        FilteredLength = 20,
+                        IsExcluded = false
+                    },
+                    new Section
+                    {
+                        SectionId = "section_002",
+                        HeadingPath = new List<string> { "第一章", "1.2 标题语法" },
+                        StartLine = 7,
+                        EndLine = 8,
+                        OriginalLength = 100,
+                        EffectiveLength = 80,
+                        FilteredLength = 20,
+                        IsExcluded = false
+                    }
+                }
+            }
+        };
+
+        return (filePath, documents);
     }
 
     #endregion

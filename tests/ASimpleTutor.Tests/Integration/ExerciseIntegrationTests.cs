@@ -42,18 +42,15 @@ public class ExerciseIntegrationTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        kp.BookRootId = "book_001_test1"; // 使用唯一的 BookRootId 避免文件被占用
-        var snippets = CreateTestSnippets();
-        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
-
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
+        kp.BookHubId = "book_001_test1";
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = CreateTestDocuments();
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var exercisesResponse = CreateValidExercisesResponse();
         _llmServiceMock
@@ -84,18 +81,16 @@ public class ExerciseIntegrationTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        kp.BookRootId = "book_001_test2"; // 使用唯一的 BookRootId 避免文件被占用
-        var snippets = CreateTestSnippets();
-        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
+        kp.BookHubId = "book_001_test2"; // 使用唯一的 BookHubId 避免文件被占用
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = CreateTestDocuments();
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var exercisesResponse = CreateValidExercisesResponse();
         _llmServiceMock
@@ -130,18 +125,15 @@ public class ExerciseIntegrationTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        kp.BookRootId = "book_001_test3"; // 使用唯一的 BookRootId 避免文件被占用
-        var snippets = CreateTestSnippets();
-        snippets.ForEach(s => s.BookRootId = kp.BookRootId); // 更新片段的 BookRootId
-
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
+        kp.BookHubId = "book_001_test3";
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = snippets.ToDictionary(s => s.SnippetId, s => s)
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = CreateTestDocuments();
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         _llmServiceMock
             .Setup(s => s.ChatJsonAsync<ExercisesResponse>(
@@ -163,16 +155,16 @@ public class ExerciseIntegrationTests
     {
         // Arrange
         var kp = CreateTestKnowledgePoint();
-        kp.BookRootId = "book_001_test4"; // 使用唯一的 BookRootId 避免文件被占用
+        kp.BookHubId = "book_001_test4"; // 使用唯一的 BookHubId 避免文件被占用
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = new Dictionary<string, SourceSnippet>()
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = new List<Document>();
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var exercisesResponse = CreateValidExercisesResponse();
         _llmServiceMock
@@ -185,9 +177,9 @@ public class ExerciseIntegrationTests
         // Act - 生成习题
         var exercises = await _exerciseService.GenerateAsync(kp, 3, CancellationToken.None);
 
-        // Assert - 没有片段时返回空列表
+        // Assert - 没有片段时使用降级策略生成习题
         exercises.Should().NotBeNull();
-        exercises.Should().BeEmpty();
+        exercises.Should().NotBeEmpty();
     }
 
     #endregion
@@ -216,18 +208,17 @@ public class ExerciseIntegrationTests
         {
             KpId = "kp_empty",
             Title = "",
-            SnippetIds = new List<string>(),
-            BookRootId = "book_001_test5" // 使用唯一的 BookRootId 避免文件被占用
+            BookHubId = "book_001_test5" // 使用唯一的 BookHubId 避免文件被占用
         };
 
         // 由于我们现在使用的是实际的 KnowledgeSystemStore 实例，而不是 mock 对象，
         // 我们需要先保存知识系统，然后才能加载它
         var knowledgeSystem = new KnowledgeSystem
         {
-            BookRootId = kp.BookRootId,
-            Snippets = new Dictionary<string, SourceSnippet>()
+            BookHubId = kp.BookHubId
         };
-        await _knowledgeSystemStore.SaveAsync(knowledgeSystem);
+        var documents = new List<Document>();
+        await _knowledgeSystemStore.SaveAsync(knowledgeSystem, documents);
 
         var exercisesResponse = CreateValidExercisesResponse();
         _llmServiceMock
@@ -240,9 +231,9 @@ public class ExerciseIntegrationTests
         // Act - 生成习题
         var exercises = await _exerciseService.GenerateAsync(kp, 3, CancellationToken.None);
 
-        // Assert - 知识点为空时返回空列表
+        // Assert - 知识点为空时使用降级策略生成习题
         exercises.Should().NotBeNull();
-        exercises.Should().BeEmpty();
+        exercises.Should().NotBeEmpty();
     }
 
     #endregion
@@ -254,12 +245,11 @@ public class ExerciseIntegrationTests
         return new KnowledgePoint
         {
             KpId = "kp_001",
-            BookRootId = "book_001",
+            BookHubId = "book_001",
             Title = "什么是 Markdown",
             Aliases = new List<string> { "MD", "标记语言" },
             ChapterPath = new List<string> { "第一章", "1.1 基础概念" },
-            Importance = 0.8f,
-            SnippetIds = new List<string> { "snippet_001", "snippet_002" }
+            Importance = 0.8f
         };
     }
 
@@ -270,7 +260,6 @@ public class ExerciseIntegrationTests
             new SourceSnippet
             {
                 SnippetId = "snippet_001",
-                BookRootId = "book_001",
                 DocId = "doc_001",
                 FilePath = "/docs/ch01.md",
                 HeadingPath = new List<string> { "第一章", "1.1 基础概念" },
@@ -281,7 +270,6 @@ public class ExerciseIntegrationTests
             new SourceSnippet
             {
                 SnippetId = "snippet_002",
-                BookRootId = "book_001",
                 DocId = "doc_001",
                 FilePath = "/docs/ch01.md",
                 HeadingPath = new List<string> { "第一章", "1.2 标题语法" },
@@ -343,6 +331,45 @@ public class ExerciseIntegrationTests
             Explanation = "你的答案部分正确，需要进一步理解 Markdown 的核心概念。",
             IsCorrect = false,
             ReferenceAnswer = "正确答案内容"
+        };
+    }
+
+    private static List<Document> CreateTestDocuments()
+    {
+        return new List<Document>
+        {
+            new Document
+            {
+                DocId = "doc_001",
+                BookHubId = "book_001",
+                Path = "/docs/ch01.md",
+                Title = "第一章 基础概念",
+                Sections = new List<Section>
+                {
+                    new Section
+                    {
+                        SectionId = "section_001",
+                        HeadingPath = new List<string> { "第一章", "1.1 基础概念" },
+                        StartLine = 10,
+                        EndLine = 15,
+                        OriginalLength = 100,
+                        EffectiveLength = 80,
+                        FilteredLength = 20,
+                        IsExcluded = false
+                    },
+                    new Section
+                    {
+                        SectionId = "section_002",
+                        HeadingPath = new List<string> { "第一章", "1.2 标题语法" },
+                        StartLine = 20,
+                        EndLine = 25,
+                        OriginalLength = 100,
+                        EffectiveLength = 80,
+                        FilteredLength = 20,
+                        IsExcluded = false
+                    }
+                }
+            }
         };
     }
 

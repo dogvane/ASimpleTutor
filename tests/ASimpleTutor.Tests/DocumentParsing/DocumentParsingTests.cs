@@ -20,7 +20,7 @@ public class DocumentParsingTests
         var document = new Document
         {
             DocId = "doc1",
-            BookRootId = "book1",
+            BookHubId = "book1",
             Path = "/path/to/doc.md",
             Title = "Test Document",
             Sections = new List<Section>
