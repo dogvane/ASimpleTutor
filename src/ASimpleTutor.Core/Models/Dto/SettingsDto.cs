@@ -98,3 +98,50 @@ public class TestLlmConnectionResponse
     /// </summary>
     public long ResponseTimeMs { get; set; }
 }
+
+/// <summary>
+/// TTS 配置请求
+/// </summary>
+public class TtsSettingsRequest
+{
+    /// <summary>
+    /// API 密钥
+    /// </summary>
+    public string ApiKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// API 基础 URL
+    /// </summary>
+    public string BaseUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 语音模型
+    /// </summary>
+    public string Voice { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// TTS 配置响应（API Key 脱敏）
+/// </summary>
+public class TtsSettingsResponse
+{
+    /// <summary>
+    /// 脱敏后的 API 密钥（sk-***...xyz 格式）
+    /// </summary>
+    public string ApiKeyMasked { get; set; } = string.Empty;
+
+    /// <summary>
+    /// API 基础 URL
+    /// </summary>
+    public string BaseUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 语音模型
+    /// </summary>
+    public string Voice { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 配置是否有效
+    /// </summary>
+    public bool IsValid { get; set; }
+}

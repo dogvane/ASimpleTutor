@@ -35,4 +35,26 @@ public interface ISettingsService
     /// <param name="model">模型名称</param>
     /// <returns>配置是否有效</returns>
     Task<bool> ValidateLlmSettingsAsync(string apiKey, string baseUrl, string model);
+
+    /// <summary>
+    /// 获取当前 TTS 配置（API Key 脱敏）
+    /// </summary>
+    /// <returns>TTS 配置响应</returns>
+    Task<TtsSettingsResponse> GetTtsSettingsAsync();
+
+    /// <summary>
+    /// 更新 TTS 配置
+    /// </summary>
+    /// <param name="request">配置更新请求</param>
+    /// <returns>更新后的 TTS 配置响应</returns>
+    Task<TtsSettingsResponse> UpdateTtsSettingsAsync(TtsSettingsRequest request);
+
+    /// <summary>
+    /// 验证 TTS 配置是否有效
+    /// </summary>
+    /// <param name="apiKey">API 密钥</param>
+    /// <param name="baseUrl">API 基础 URL</param>
+    /// <param name="voice">语音模型</param>
+    /// <returns>配置是否有效</returns>
+    Task<bool> ValidateTtsSettingsAsync(string apiKey, string baseUrl, string voice);
 }

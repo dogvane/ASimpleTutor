@@ -89,4 +89,45 @@ public class SettingsController : ControllerBase
             return BadRequest(new { error = new { code = "TEST_FAILED", message = "连接测试失败" } });
         }
     }
+
+    /// <summary>
+    /// 获取 TTS 配置
+    /// </summary>
+    [HttpGet("tts")]
+    public async Task<IActionResult> GetTtsSettings()
+    {
+        try
+        {
+            var settings = await _settingsService.GetTtsSettingsAsync();
+            return Ok(new { items = new[] { settings } });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "获取 TTS 配置失败");
+            return BadRequest(new { error = new { code = "GET_SETTINGS_FAILED", message = "获取配置失败" } });
+        }
+    }
+
+    /// <summary>
+    /// 更新 TTS 配置
+    /// </summary>
+    [HttpPut("tts")]
+    public async Task<IActionResult> UpdateTtsSettings([FromBody] TtsSettingsRequest request)
+    {
+        try
+        {
+            var settings = await _settingsService.UpdateTtsSettingsAsync(request);
+            return Ok(new { success = true, message = "配置已保存并实时生效", items = new[] { settings } });
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "配置参数无效");
+            return BadRequest(new { error = new { code = "BAD_REQUEST", message = ex.Message } });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "更新 TTS 配置失败");
+            return BadRequest(new { error = new { code = "UPDATE_SETTINGS_FAILED", message = "更新配置失败" } });
+        }
+    }
 }

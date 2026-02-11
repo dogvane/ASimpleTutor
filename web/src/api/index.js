@@ -62,3 +62,11 @@ export const testLlmConnection = (settings) =>
     method: 'POST',
     body: JSON.stringify(settings),
   })
+
+export const getTtsSettings = () => apiFetch('/settings/tts')
+
+export const updateTtsSettings = (settings) =>
+  apiFetch('/settings/tts', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  })

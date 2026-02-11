@@ -160,6 +160,24 @@ public class SettingsService : ISettingsService
     }
 
     /// <summary>
+    /// 验证 TTS 请求参数
+    /// </summary>
+    private void ValidateRequest(TtsSettingsRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.ApiKey))
+            throw new ArgumentException("API Key 不能为空", nameof(request.ApiKey));
+
+        if (string.IsNullOrWhiteSpace(request.BaseUrl))
+            throw new ArgumentException("Base URL 不能为空", nameof(request.BaseUrl));
+
+        if (!Uri.TryCreate(request.BaseUrl, UriKind.Absolute, out _))
+            throw new ArgumentException("Base URL 格式无效", nameof(request.BaseUrl));
+
+        if (string.IsNullOrWhiteSpace(request.Voice))
+            throw new ArgumentException("Voice 不能为空", nameof(request.Voice));
+    }
+
+    /// <summary>
     /// 脱敏 API Key
     /// </summary>
     private string MaskApiKey(string apiKey)
@@ -184,6 +202,12 @@ public class SettingsService : ISettingsService
                     ApiKey = _config.Llm.ApiKey,
                     BaseUrl = _config.Llm.BaseUrl,
                     Model = _config.Llm.Model
+                },
+                Tts = new
+                {
+                    ApiKey = _config.Tts.ApiKey,
+                    BaseUrl = _config.Tts.BaseUrl,
+                    Voice = _config.Tts.Voice
                 }
             }
         };
@@ -197,5 +221,63 @@ public class SettingsService : ISettingsService
         var json = JsonSerializer.Serialize(userConfig, options);
         await File.WriteAllTextAsync(_userConfigPath, json);
         _logger.LogInformation("用户配置已保存到: {Path}", _userConfigPath);
+    }
+
+    /// <summary>
+    /// 获取当前 TTS 配置（API Key 脱敏）
+    /// </summary>
+    public Task<TtsSettingsResponse> GetTtsSettingsAsync()
+    {
+        return Task.FromResult(new TtsSettingsResponse
+        {
+            ApiKeyMasked = MaskApiKey(_config.Tts.ApiKey),
+            BaseUrl = _config.Tts.BaseUrl,
+            Voice = _config.Tts.Voice,
+            IsValid = !string.IsNullOrEmpty(_config.Tts.ApiKey)
+        });
+    }
+
+    /// <summary>
+    /// 更新 TTS 配置
+    /// </summary>
+    public async Task<TtsSettingsResponse> UpdateTtsSettingsAsync(TtsSettingsRequest request)
+    {
+        // 1. 验证输入
+        ValidateRequest(request);
+
+        // 2. 更新内存配置
+        _config.Tts.ApiKey = request.ApiKey;
+        _config.Tts.BaseUrl = request.BaseUrl;
+        _config.Tts.Voice = request.Voice;
+
+        // 3. 持久化到 appsettings.user.json
+        await SaveUserConfigAsync();
+
+        _logger.LogInformation("TTS 配置已更新并实时生效: {BaseUrl}, {Voice}",
+            request.BaseUrl, request.Voice);
+
+        return await GetTtsSettingsAsync();
+    }
+
+    /// <summary>
+    /// 验证 TTS 配置是否有效
+    /// </summary>
+    public async Task<bool> ValidateTtsSettingsAsync(string apiKey, string baseUrl, string voice)
+    {
+        try
+        {
+            // 简单验证配置参数是否有效
+            if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(voice))
+                return false;
+
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out _))
+                return false;
+
+            return await Task.FromResult(true);
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
