@@ -15,6 +15,11 @@
       </div>
     </div>
     <div class="right">
+      <div class="settings-btn-wrapper">
+        <button class="settings-btn" type="button" @click="$emit('open-settings')" title="设置">
+          <span>⚙️</span>
+        </button>
+      </div>
       <div class="refresh-dropdown">
         <button class="refresh-btn" type="button" @click="toggleDropdown" :disabled="scanStatus === 'scanning'">
           <span>{{ refreshLabel }}</span>
@@ -78,7 +83,7 @@ defineProps({
   },
 })
 
-const emit = defineEmits(['book-change', 'scan', 'refresh', 'search-input', 'search-keydown'])
+const emit = defineEmits(['book-change', 'scan', 'refresh', 'search-input', 'search-keydown', 'open-settings'])
 
 const dropdownOpen = ref(false)
 const refreshLabel = ref('刷新')
@@ -171,6 +176,30 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.settings-btn-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.settings-btn {
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.settings-btn:hover {
+  background: #f3f6fb;
+  color: #3772ff;
 }
 
 .refresh-dropdown {

@@ -2,6 +2,7 @@ using ASimpleTutor.Api.Configuration;
 using ASimpleTutor.Api.Controllers;
 using ASimpleTutor.Api.Logging;
 using ASimpleTutor.Api.Middleware;
+using ASimpleTutor.Api.Services;
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Services;
 using Microsoft.Extensions.Logging;
@@ -23,7 +24,8 @@ builder.Logging.SetMinimumLevel(LogLevel.Information);
 // - appsettings.{Environment}.local.json
 builder.Configuration
     .AddJsonFile("appsettings.local.json", optional: true, reloadOnChange: true)
-    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.local.json", optional: true, reloadOnChange: true);
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.local.json", optional: true, reloadOnChange: true)
+    .AddJsonFile("appsettings.user.json", optional: true, reloadOnChange: true);
 
 // 加载配置
 var config = new AppConfig();
@@ -37,6 +39,7 @@ builder.Services.Configure<ASimpleTutor.Core.Configuration.SectioningOptions>(
     builder.Configuration.GetSection("App:Sectioning"));
 
 // 注册 Core 服务
+builder.Services.AddSingleton<ISettingsService, SettingsService>();
 builder.Services.AddSingleton<IScannerService, MarkdownScanner>();
 builder.Services.AddSingleton<KnowledgeSystemStore>(sp =>
 {
@@ -227,6 +230,9 @@ app.MapGet("/", () => Results.Ok(new
     endpoints = new[]
     {
         "GET /health - 健康检查",
+        "GET /api/v1/settings/llm - 获取 LLM 配置",
+        "PUT /api/v1/settings/llm - 更新 LLM 配置",
+        "POST /api/v1/settings/llm/test - 测试 LLM 连接",
         "GET /api/v1/books/hubs - 获取书籍中心列表",
         "POST /api/v1/books/activate - 激活书籍中心",
         "POST /api/v1/books/scan - 触发扫描",

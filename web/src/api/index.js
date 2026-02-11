@@ -47,3 +47,18 @@ export const submitFeedback = (kpId, answers) =>
     method: 'POST',
     body: JSON.stringify({ kpId, answers }),
   })
+
+// Settings APIs
+export const getLlmSettings = () => apiFetch('/settings/llm')
+
+export const updateLlmSettings = (settings) =>
+  apiFetch('/settings/llm', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  })
+
+export const testLlmConnection = (settings) =>
+  apiFetch('/settings/llm/test', {
+    method: 'POST',
+    body: JSON.stringify(settings),
+  })

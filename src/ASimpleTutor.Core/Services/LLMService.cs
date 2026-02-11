@@ -16,16 +16,15 @@ namespace ASimpleTutor.Core.Services;
 /// </summary>
 public class LLMService : ILLMService
 {
-    private readonly ChatClient _client;
-    private readonly string _model;
+    private ChatClient _client;
+    private string _model;
     private readonly ILogger<LLMService> _logger;
     private readonly string _cacheDirectory;
-
-    private readonly bool _isOllama;
+    private bool _isOllama;
+    private readonly object _lock = new();
 
     public LLMService(string apiKey, string baseUrl, string model, ILogger<LLMService> logger)
     {
-        _model = model;
         _logger = logger;
         _cacheDirectory = Path.Combine(AppContext.BaseDirectory, "llm_cache");
 
@@ -36,8 +35,19 @@ public class LLMService : ILLMService
             _logger.LogInformation("创建 LLM 缓存目录: {CacheDir}", _cacheDirectory);
         }
 
+        // 初始化配置
+        InitializeClient(apiKey, baseUrl, model);
+    }
+
+    /// <summary>
+    /// 初始化/重新初始化客户端
+    /// </summary>
+    private void InitializeClient(string apiKey, string baseUrl, string model)
+    {
+        _model = model;
+
         // 判断是否是 Ollama 模型（根据 model 名称）
-        _isOllama = "ollama".Equals(model, StringComparison.OrdinalIgnoreCase) || 
+        _isOllama = "ollama".Equals(model, StringComparison.OrdinalIgnoreCase) ||
                     "ollama".Equals(apiKey, StringComparison.OrdinalIgnoreCase);
 
         // 支持自定义 baseUrl（如 Ollama）
@@ -54,6 +64,18 @@ public class LLMService : ILLMService
             // 默认使用 OpenAI 官方 API
             _client = new ChatClient(model, apiKey);
             _logger.LogInformation("使用 OpenAI 官方 API，模型: {Model}", model);
+        }
+    }
+
+    /// <summary>
+    /// 更新 LLM 配置并重新初始化客户端
+    /// </summary>
+    public void UpdateConfig(string apiKey, string baseUrl, string model)
+    {
+        lock (_lock)
+        {
+            _logger.LogInformation("更新 LLM 配置: ApiKey=***, BaseUrl={BaseUrl}, Model={Model}", baseUrl, model);
+            InitializeClient(apiKey, baseUrl, model);
         }
     }
 

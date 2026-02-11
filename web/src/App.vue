@@ -21,6 +21,7 @@ import EmptyState from './components/EmptyState.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ExercisesDrawer from './components/ExercisesDrawer.vue'
 import LoadingOverlay from './components/LoadingOverlay.vue'
+import SettingsDialog from './components/SettingsDialog.vue'
 import SlideViewer from './components/SlideViewer.vue'
 import TopBar from './components/TopBar.vue'
 
@@ -54,6 +55,20 @@ const learningLoading = ref(false)
 const slides = ref([])
 const currentSlideIndex = ref(0)
 const audioAvailable = ref(false)
+
+// 设置对话框状态
+const settingsDialogOpen = ref(false)
+
+// 打开设置对话框
+const openSettings = () => {
+  settingsDialogOpen.value = true
+}
+
+// 设置保存成功后的处理
+const handleSettingsSaved = () => {
+  // 配置已实时生效，无需重启
+  console.log('配置已保存并实时生效')
+}
 
 // 检查音频是否可用
 const checkAudioAvailability = async (kpId) => {
@@ -642,6 +657,7 @@ onMounted(() => {
       @refresh="handleRefresh"
       @search-input="onSearchInput"
       @search-keydown="onSearchKeydown"
+      @open-settings="openSettings"
     />
 
     <ErrorBanner v-if="globalError" :message="globalError.message" :code="globalError.code" :retry="loadBookHubs" />
@@ -713,6 +729,12 @@ onMounted(() => {
       @answer-change="updateAnswer"
       @submit-all="submitAllAnswers"
       @submit-one="submitOneAnswer"
+    />
+
+    <SettingsDialog
+      :open="settingsDialogOpen"
+      @close="settingsDialogOpen = false"
+      @saved="handleSettingsSaved"
     />
   </div>
 </template>
