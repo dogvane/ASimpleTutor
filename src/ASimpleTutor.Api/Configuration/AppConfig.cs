@@ -41,4 +41,5 @@ public class TtsConfig
     public string ApiKey { get; set; } = string.Empty;
     public string BaseUrl { get; set; } = "https://api.openai.com/v1";
     public string Voice { get; set; } = "alloy";
+    public float Speed { get; set; } = 1.0f;
 }

@@ -247,6 +247,26 @@
             <span v-if="ttsErrors.voice" class="error">{{ ttsErrors.voice }}</span>
             <span class="hint">选择 TTS 语音模型</span>
           </div>
+
+          <!-- Speed -->
+          <div class="form-group">
+            <label for="tts-speed">
+              语速
+            </label>
+            <div class="speed-control">
+              <input
+                id="tts-speed"
+                v-model.number="ttsFormData.speed"
+                type="range"
+                min="0.25"
+                max="4.0"
+                step="0.25"
+                :disabled="ttsSaving"
+              />
+              <span class="speed-value">{{ ttsFormData.speed.toFixed(2) }}x</span>
+            </div>
+            <span class="hint">控制播放速度（0.25x 最慢 - 4.0x 最快，默认 1.0x）</span>
+          </div>
         </form>
       </div>
 
@@ -478,6 +498,7 @@ const ttsFormData = reactive({
   apiKey: '',
   baseUrl: 'https://api.openai.com/v1',
   voice: 'alloy',
+  speed: 1.0,
 })
 
 const ttsCustomBaseUrl = ref('')
@@ -587,6 +608,7 @@ const loadSettings = async () => {
     if (ttsSettings) {
       const loadedUrl = ttsSettings.baseUrl || 'https://api.openai.com/v1'
       const loadedVoice = ttsSettings.voice || 'alloy'
+      const loadedSpeed = ttsSettings.speed || 1.0
 
       if (ttsPresetBaseUrls.includes(loadedUrl)) {
         ttsFormData.baseUrl = loadedUrl
@@ -596,6 +618,7 @@ const loadSettings = async () => {
       }
 
       ttsFormData.voice = loadedVoice
+      ttsFormData.speed = loadedSpeed
     }
   } catch (error) {
     console.error('加载配置失败:', error)
@@ -643,6 +666,7 @@ const handleSave = async () => {
         apiKey: ttsFormData.apiKey,
         baseUrl: ttsActualBaseUrl.value,
         voice: ttsActualVoice.value,
+        speed: ttsFormData.speed,
       })
 
       emit('saved')
@@ -672,6 +696,7 @@ watch(
       ttsFormData.apiKey = ''
       ttsCustomBaseUrl.value = ''
       ttsCustomVoice.value = ''
+      ttsFormData.speed = 1.0
     }
   },
 )
@@ -760,6 +785,25 @@ watch(
 
 .dialog-body {
   padding: 24px;
+}
+
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.speed-control input[type="range"] {
+  flex: 1;
+  padding: 0;
+}
+
+.speed-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: #3772ff;
+  min-width: 50px;
+  text-align: center;
 }
 
 .settings-form {

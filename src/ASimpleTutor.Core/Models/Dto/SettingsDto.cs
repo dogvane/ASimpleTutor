@@ -118,6 +118,11 @@ public class TtsSettingsRequest
     /// 语音模型
     /// </summary>
     public string Voice { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 语速（0.25-4.0，默认 1.0，用于播放时控制速度）
+    /// </summary>
+    public float Speed { get; set; } = 1.0f;
 }
 
 /// <summary>
@@ -144,4 +149,9 @@ public class TtsSettingsResponse
     /// 配置是否有效
     /// </summary>
     public bool IsValid { get; set; }
+
+    /// <summary>
+    /// 语速（0.25-4.0，默认 1.0）
+    /// </summary>
+    public float Speed { get; set; } = 1.0f;
 }

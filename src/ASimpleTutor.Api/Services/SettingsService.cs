@@ -207,7 +207,8 @@ public class SettingsService : ISettingsService
                 {
                     ApiKey = _config.Tts.ApiKey,
                     BaseUrl = _config.Tts.BaseUrl,
-                    Voice = _config.Tts.Voice
+                    Voice = _config.Tts.Voice,
+                    Speed = _config.Tts.Speed
                 }
             }
         };
@@ -233,6 +234,7 @@ public class SettingsService : ISettingsService
             ApiKeyMasked = MaskApiKey(_config.Tts.ApiKey),
             BaseUrl = _config.Tts.BaseUrl,
             Voice = _config.Tts.Voice,
+            Speed = _config.Tts.Speed,
             IsValid = !string.IsNullOrEmpty(_config.Tts.ApiKey)
         });
     }
@@ -249,12 +251,13 @@ public class SettingsService : ISettingsService
         _config.Tts.ApiKey = request.ApiKey;
         _config.Tts.BaseUrl = request.BaseUrl;
         _config.Tts.Voice = request.Voice;
+        _config.Tts.Speed = request.Speed;
 
         // 3. 持久化到 appsettings.user.json
         await SaveUserConfigAsync();
 
-        _logger.LogInformation("TTS 配置已更新并实时生效: {BaseUrl}, {Voice}",
-            request.BaseUrl, request.Voice);
+        _logger.LogInformation("TTS 配置已更新并实时生效: {BaseUrl}, {Voice}, {Speed}",
+            request.BaseUrl, request.Voice, request.Speed);
 
         return await GetTtsSettingsAsync();
     }
