@@ -40,6 +40,8 @@ const emit = defineEmits(['update:currentIndex', 'slideChange', 'openExercises',
 const audioPlaying = ref(false)
 const hoverSource = ref(null)
 const selectedOption = ref('')
+const audioElement = ref(null)
+const audioSpeed = ref(1.0)
 
 const currentSlide = computed(() => {
   if (props.slides.length === 0) return null
@@ -59,6 +61,11 @@ const currentAnswer = computed(() => {
   if (!currentExercise.value) return ''
   return props.quizAnswers[currentExercise.value.id] || ''
 })
+
+// 当前幻灯片的音频 URL
+const currentAudioUrl = computed(() => currentSlide.value?.audioUrl)
+// 当前幻灯片的播放速度
+const currentSpeed = computed(() => currentSlide.value?.speed || 1.0)
 
 // 计算属性：将 Markdown 转换为 HTML
 const slideContentHtml = computed(() => {
@@ -91,7 +98,14 @@ const prevSlide = () => {
 }
 
 const toggleAudio = () => {
-  audioPlaying.value = !audioPlaying.value
+  if (!audioElement.value) return
+  if (audioPlaying.value) {
+    audioElement.value.pause()
+    audioPlaying.value = false
+  } else {
+    audioElement.value.play()
+    audioPlaying.value = true
+  }
 }
 
 const handleSourceHover = (source) => {
@@ -117,7 +131,7 @@ const handleSlideClick = (event) => {
   if (isQuizSlide.value) {
     return
   }
-  
+
   const rect = event.currentTarget.getBoundingClientRect()
   const clickX = event.clientX - rect.left
   if (clickX < rect.width * 0.3) {
@@ -134,7 +148,7 @@ const handleOptionChange = (option) => {
     exerciseId: currentExercise.value.id,
     value: option
   })
-  
+
   // 自动提交答案
   emit('submitQuizAnswer', {
     exerciseId: currentExercise.value.id,
@@ -169,21 +183,70 @@ watch(() => props.currentIndex, (newIndex) => {
 watch(() => currentAnswer.value, (newAnswer) => {
   selectedOption.value = newAnswer
 })
+
+// 监听音频 URL 变化，自动播放
+watch(() => [currentAudioUrl.value, currentSpeed.value], ([url, speed]) => {
+  if (audioElement.value) {
+    audioElement.value.pause()
+    audioPlaying.value = false
+  }
+
+  if (url) {
+    // 等待 DOM 更新后播放
+    setTimeout(() => {
+      if (audioElement.value) {
+        audioElement.value.playbackRate = speed || 1.0
+        audioElement.value.play().then(() => {
+          audioPlaying.value = true
+        }).catch((err) => {
+          // 自动播放被阻止，等待用户手动点击
+          audioPlaying.value = false
+        })
+      } else {
+        console.warn('[SlideViewer] Audio element not found in setTimeout')
+      }
+    }, 100)
+  }
+})
+
+// 音频事件处理
+const handleAudioEnded = () => {
+  audioPlaying.value = false
+}
+
+const handleAudioPlay = () => {
+  audioPlaying.value = true
+}
+
+const handleAudioPause = () => {
+  audioPlaying.value = false
+}
 </script>
 
 <template>
   <div class="slide-viewer">
     <div class="slide-header">
       <h2>{{ title }}</h2>
-      <button 
-        v-if="audioAvailable" 
-        class="audio-toggle" 
+      <button
+        v-if="currentAudioUrl"
+        class="audio-toggle"
         @click="toggleAudio"
         :class="{ playing: audioPlaying }"
       >
         {{ audioPlaying ? '🔊' : '🔈' }}
       </button>
     </div>
+
+    <!-- 隐藏的音频元素 -->
+    <audio
+      v-if="currentAudioUrl"
+      ref="audioElement"
+      :src="currentAudioUrl"
+      @ended="handleAudioEnded"
+      @play="handleAudioPlay"
+      @pause="handleAudioPause"
+      style="display: none;"
+    ></audio>
 
     <div class="slide-container">
       <div 
@@ -307,11 +370,11 @@ watch(() => currentAnswer.value, (newAnswer) => {
 .audio-toggle {
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: 16px;
   cursor: pointer;
   padding: 0;
-  width: 40px;
-  height: 40px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;

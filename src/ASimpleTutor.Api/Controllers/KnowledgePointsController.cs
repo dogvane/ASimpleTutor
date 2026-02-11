@@ -1,6 +1,8 @@
 using ASimpleTutor.Api.Configuration;
+using ASimpleTutor.Api.Interfaces;
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
+using ASimpleTutor.Core.Models.Dto;
 using ASimpleTutor.Core.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -17,13 +19,19 @@ public class KnowledgePointsController : ControllerBase
     private static KnowledgeSystem? _knowledgeSystem;
     private static readonly object _lock = new();
     private readonly ILearningGenerator _learningGenerator;
+    private readonly ITtsService _ttsService;
+    private readonly ISettingsService _settingsService;
     private readonly ILogger<KnowledgePointsController> _logger;
 
     public KnowledgePointsController(
         ILearningGenerator learningGenerator,
+        ITtsService ttsService,
+        ISettingsService settingsService,
         ILogger<KnowledgePointsController> logger)
     {
         _learningGenerator = learningGenerator;
+        _ttsService = ttsService;
+        _settingsService = settingsService;
         _logger = logger;
     }
 
@@ -286,11 +294,23 @@ public class KnowledgePointsController : ControllerBase
 
         var slideCards = kp.SlideCards ?? new List<SlideCard>();
 
-        // 检查是否有幻灯片卡片缺少 SpeechScript
-        var needsRegeneration = slideCards.Any(sc => string.IsNullOrEmpty(sc.SpeechScript));
+        // 详细日志：记录每个 SlideCard 的 SpeechScript 状态
+        _logger.LogInformation("[TTS] 加载知识点 SlideCards，KpId={KpId}, Count={Count}", kpId, slideCards.Count);
+        foreach (var sc in slideCards)
+        {
+            var hasValue = !string.IsNullOrEmpty(sc.SpeechScript);
+            var length = sc.SpeechScript?.Length ?? 0;
+            _logger.LogDebug("[TTS] 加载时 SlideCard 状态，SlideId={SlideId}, HasSpeechScript={Has}, Length={Length}, IsNullOrEmpty={IsNullOrEmpty}",
+                sc.SlideId, hasValue, length, string.IsNullOrEmpty(sc.SpeechScript));
+        }
+
+        // 检查是否有幻灯片卡片缺少 SpeechScript（使用 null 检查而不是 IsNullOrEmpty）
+        var needsRegeneration = slideCards.Any(sc => sc.SpeechScript == null);
+        _logger.LogDebug("[TTS] 检查结果，NeedsRegeneration={Needs}, TotalCount={Total}",
+            needsRegeneration, slideCards.Count);
         if (needsRegeneration)
         {
-            _logger.LogInformation("检测到幻灯片卡片缺少 SpeechScript，开始生成: {KpId}", kpId);
+            _logger.LogInformation("[TTS] 检测到幻灯片卡片缺少 SpeechScript，开始重新生成: {KpId}", kpId);
             try
             {
                 var learningPack = await _learningGenerator.GenerateAsync(kp, cancellationToken);
@@ -299,7 +319,16 @@ public class KnowledgePointsController : ControllerBase
                     // 更新知识点的 SlideCards
                     kp.SlideCards = learningPack.SlideCards;
                     slideCards = learningPack.SlideCards;
-                    _logger.LogInformation("SpeechScript 生成完成: {KpId}", kpId);
+
+                    // 详细日志：记录生成后的状态
+                    _logger.LogInformation("[TTS] SpeechScript 重新生成完成，KpId={KpId}, Count={Count}", kpId, learningPack.SlideCards.Count);
+                    foreach (var sc in learningPack.SlideCards)
+                    {
+                        _logger.LogDebug("[TTS] 重新生成后状态，SlideId={SlideId}, HasSpeechScript={Has}, Length={Length}",
+                            sc.SlideId,
+                            !string.IsNullOrEmpty(sc.SpeechScript),
+                            sc.SpeechScript?.Length ?? 0);
+                    }
                 }
             }
             catch (Exception ex)
@@ -309,11 +338,52 @@ public class KnowledgePointsController : ControllerBase
             }
         }
 
-        return Ok(new
+        // 获取 TTS 语速配置
+        var ttsSettings = await _settingsService.GetTtsSettingsAsync();
+        var ttsSpeed = ttsSettings.Speed;
+
+        // 为每个幻灯片卡片生成音频 URL
+        var slideCardResponses = new List<object>();
+        var generatedCount = 0;
+        var cachedCount = 0;
+        var errorCount = 0;
+        var emptyScriptCount = 0;
+
+        foreach (var sc in slideCards)
         {
-            id = kp.KpId,
-            title = kp.Title,
-            slideCards = slideCards.Select(sc => new
+            string? audioUrl = null;
+
+            // 详细日志：显示每个卡片的 SpeechScript 状态
+            var scriptValue = sc.SpeechScript;
+            var isNull = scriptValue == null;
+            var isEmpty = !isNull && string.IsNullOrEmpty(scriptValue);
+            _logger.LogDebug("[TTS] 处理卡片，SlideId={SlideId}, SpeechScript.IsNull={IsNull}, IsEmpty={IsEmpty}, Length={Length}, Preview={Preview}",
+                sc.SlideId, isNull, isEmpty, scriptValue?.Length ?? 0,
+                scriptValue != null ? (scriptValue.Length > 100 ? scriptValue.Substring(0, 100) + "..." : scriptValue) : "null");
+
+            if (isNull || isEmpty)
+            {
+                emptyScriptCount++;
+                _logger.LogDebug("[TTS] SlideCard 没有 SpeechScript（空或null），跳过音频生成，SlideId={SlideId}", sc.SlideId);
+            }
+            else
+            {
+                try
+                {
+                    audioUrl = await _ttsService.GetAudioUrlAsync(sc.SpeechScript, cancellationToken);
+                    if (!string.IsNullOrEmpty(audioUrl))
+                    {
+                        generatedCount++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errorCount++;
+                    _logger.LogError(ex, "[TTS] 生成音频 URL 失败: {SlideId}", sc.SlideId);
+                }
+            }
+
+            slideCardResponses.Add(new
             {
                 slideId = sc.SlideId,
                 type = sc.Type.ToString(),
@@ -321,6 +391,8 @@ public class KnowledgePointsController : ControllerBase
                 title = sc.Title,
                 htmlContent = sc.HtmlContent,
                 speechScript = sc.SpeechScript,
+                audioUrl = audioUrl,
+                speed = ttsSpeed,
                 sourceReferences = sc.SourceReferences.Select(sr => new
                 {
                     snippetId = sr.SnippetId,
@@ -331,7 +403,17 @@ public class KnowledgePointsController : ControllerBase
                     content = sr.Content
                 }),
                 config = sc.Config
-            })
+            });
+        }
+
+        _logger.LogInformation("[TTS] 音频 URL 生成完成，总幻灯片数={Total}, 已生成={Generated}, 已缓存={Cached}, 无脚本={Empty}, 错误={Errors}",
+            slideCards.Count, generatedCount, cachedCount, emptyScriptCount, errorCount);
+
+        return Ok(new
+        {
+            id = kp.KpId,
+            title = kp.Title,
+            slideCards = slideCardResponses
         });
     }
 }

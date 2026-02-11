@@ -1,5 +1,6 @@
 using ASimpleTutor.Api.Configuration;
 using ASimpleTutor.Api.Controllers;
+using ASimpleTutor.Api.Interfaces;
 using ASimpleTutor.Api.Logging;
 using ASimpleTutor.Api.Middleware;
 using ASimpleTutor.Api.Services;
@@ -56,6 +57,12 @@ builder.Services.AddSingleton<ILLMService>(sp =>
         config.Llm.BaseUrl,
         config.Llm.Model,
         logger);
+});
+builder.Services.AddSingleton<ITtsService>(sp =>
+{
+    var logger = sp.GetRequiredService<ILogger<TtsService>>();
+    var env = sp.GetRequiredService<IWebHostEnvironment>();
+    return new TtsService(config, logger, env);
 });
 builder.Services.AddSingleton<IKnowledgeBuilder, KnowledgeBuilder>();
 builder.Services.AddSingleton<ILearningGenerator, LearningGenerator>();
@@ -215,6 +222,9 @@ if (app.Environment.IsDevelopment())
 
 // 使用异常处理中间件
 app.UseExceptionHandlerMiddleware();
+
+// 启用静态文件服务，用于提供生成的音频文件等
+app.UseStaticFiles();
 
 app.UseRouting();
 app.MapControllers();
