@@ -36,6 +36,11 @@ export const getExercisesStatus = (kpId) =>
 export const getExercises = (kpId) =>
   apiFetch(`/knowledge-points/exercises?kpId=${encodeURIComponent(kpId)}`)
 
+export const refreshExercises = () =>
+  apiFetch('/exercises/refresh', {
+    method: 'POST',
+  })
+
 export const submitExercise = (exerciseId, answer) =>
   apiFetch('/exercises/submit', {
     method: 'POST',

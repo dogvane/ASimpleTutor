@@ -1,4 +1,4 @@
-import { getKnowledgePoints, getOverview, getDetailedContent, getSourceContent, getSlideCards, getExercisesStatus } from '../api'
+import { getKnowledgePoints, getOverview, getDetailedContent, getSourceContent, getSlideCards, getExercisesStatus, refreshExercises as refreshExercisesApi } from '../api'
 
 /**
  * 知识点加载逻辑
@@ -61,6 +61,25 @@ export function useKnowledgePointLoader(state) {
       exercisesStatus.value = data.status || (data.hasExercises ? 'ready' : 'idle')
     } catch (error) {
       exercisesStatus.value = 'idle'
+    }
+  }
+
+  // 刷新习题（清空缓存并重新生成）
+  const refreshExercises = async () => {
+    learningLoading.value = true
+    setError(null)
+    try {
+      const data = await refreshExercisesApi()
+      // 如果当前有选中的知识点，刷新其习题状态
+      if (selectedKp.value) {
+        exercisesStatus.value = 'ready'
+      }
+      return data
+    } catch (error) {
+      setError(error)
+      throw error
+    } finally {
+      learningLoading.value = false
     }
   }
 
@@ -215,5 +234,6 @@ export function useKnowledgePointLoader(state) {
     selectKp,
     loadSlides,
     loadExercisesStatus,
+    refreshExercises,
   }
 }

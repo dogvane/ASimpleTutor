@@ -190,6 +190,71 @@ public class ExercisesController : ControllerBase
     }
 
     /// <summary>
+    /// 刷新所有习题（清空缓存并重新生成）
+    /// </summary>
+    [HttpPost("exercises/refresh")]
+    public async Task<IActionResult> RefreshExercises(
+        [FromServices] IServiceProvider serviceProvider,
+        [FromServices] ILogger<ExercisesController> logger)
+    {
+        if (_knowledgeSystem == null)
+        {
+            return NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
+        }
+
+        try
+        {
+            // 清空所有习题缓存
+            lock (_lock)
+            {
+                _exerciseCache.Clear();
+            }
+
+            // 为所有知识点重新生成习题（并行异步）
+            var generator = serviceProvider.GetRequiredService<IExerciseGenerator>();
+            var totalExercises = 0;
+            var knowledgePointCount = 0;
+
+            await Parallel.ForEachAsync(_knowledgeSystem.KnowledgePoints, async (kp, ct) =>
+            {
+                try
+                {
+                    var exercises = await generator.GenerateAsync(kp, 3, ct);
+
+                    lock (_lock)
+                    {
+                        foreach (var ex in exercises)
+                        {
+                            _exerciseCache[ex.ExerciseId] = ex;
+                        }
+                    }
+
+                    Interlocked.Add(ref totalExercises, exercises.Count);
+                    Interlocked.Increment(ref knowledgePointCount);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "为知识点生成习题失败: {KpId}", kp.KpId);
+                }
+            });
+
+            return Ok(new
+            {
+                message = "习题刷新完成",
+                knowledgePointCount = knowledgePointCount,
+                totalExerciseCount = totalExercises,
+                status = "ready",
+                generatedAt = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "刷新习题失败");
+            return StatusCode(500, new { error = new { code = "GENERATION_FAILED", message = "刷新习题失败" } });
+        }
+    }
+
+    /// <summary>
     /// 批量提交并获取反馈
     /// </summary>
     [HttpPost("exercises/feedback")]

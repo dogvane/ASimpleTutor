@@ -59,6 +59,7 @@ const kpLoader = useKnowledgePointLoader(state)
 const {
   loadKnowledgePoints,
   selectKp,
+  refreshExercises,
 } = kpLoader
 
 const exerciseModule = useExercise(state)
@@ -113,9 +114,7 @@ const handleRefresh = async (type) => {
       await scanAndLoad()
       break
     case 'exercises':
-      if (selectedKp.value) {
-        await kpLoader.loadExercisesStatus(selectedKp.value.id)
-      }
+      await refreshExercises()
       break
     case 'knowledge':
       if (selectedChapter.value) {
