@@ -40,6 +40,7 @@
           @update:api-key="llmFormData.apiKey = $event"
           @update:custom-base-url="llmCustomBaseUrl = $event"
           @update:custom-model="llmCustomModel = $event"
+          @update:concurrency="llmFormData.concurrency = $event"
           @provider-change="handleLlmProviderChange"
           @base-url-change="handleLlmBaseUrlChange"
           @model-change="handleLlmModelChange"
@@ -149,6 +150,7 @@ const llmFormData = reactive({
   apiKey: '',
   baseUrl: 'https://api.openai.com/v1',
   model: 'gpt-4o',
+  concurrency: 1,
 })
 
 const llmSelectedProvider = ref('')
@@ -159,6 +161,7 @@ const llmErrors = reactive({
   apiKey: '',
   baseUrl: '',
   model: '',
+  concurrency: '',
 })
 
 const llmTesting = ref(false)
@@ -222,6 +225,13 @@ const validateLlmField = (field) => {
     const model = llmActualModel.value
     if (!model.trim()) {
       llmErrors.model = 'Model 不能为空'
+    }
+  }
+
+  if (field === 'concurrency') {
+    const value = llmFormData.concurrency
+    if (!value || value < 1 || value > 10) {
+      llmErrors.concurrency = '并发数必须在 1-10 之间'
     }
   }
 }
@@ -341,6 +351,7 @@ const loadSettings = async () => {
     if (llmSettings) {
       const loadedUrl = llmSettings.baseUrl || 'https://api.openai.com/v1'
       const loadedModel = llmSettings.model || 'gpt-4o'
+      const loadedConcurrency = llmSettings.concurrency ?? 1
 
       if (llmPresetBaseUrls.includes(loadedUrl)) {
         llmFormData.baseUrl = loadedUrl
@@ -351,6 +362,7 @@ const loadSettings = async () => {
       }
 
       llmFormData.model = loadedModel
+      llmFormData.concurrency = loadedConcurrency
     }
 
     const ttsData = await getTtsSettings()
@@ -384,6 +396,7 @@ const handleSave = async () => {
         apiKey: llmFormData.apiKey,
         baseUrl: llmActualBaseUrl.value,
         model: llmActualModel.value,
+        concurrency: llmFormData.concurrency,
       })
 
       emit('saved')
@@ -429,6 +442,7 @@ watch(
       llmSelectedProvider.value = ''
       llmCustomBaseUrl.value = ''
       llmCustomModel.value = ''
+      llmFormData.concurrency = 1
       ttsFormData.apiKey = ''
       ttsCustomBaseUrl.value = ''
       ttsCustomVoice.value = ''

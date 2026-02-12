@@ -37,6 +37,25 @@
       <span class="hint">{{ apiKeyHint }}</span>
     </div>
 
+    <!-- 并发数 -->
+    <div class="form-group">
+      <label for="llm-concurrency">
+        并发数
+        <span class="required">*</span>
+      </label>
+      <input
+        id="llm-concurrency"
+        type="number"
+        :value="formData.concurrency"
+        min="1"
+        max="10"
+        :disabled="testing"
+        @input="$emit('update:concurrency', parseInt($event.target.value))"
+        @blur="$emit('validate', 'concurrency')"
+      />
+      <span class="hint">控制同时调用的 LLM 数量（1-10），默认为 1</span>
+    </div>
+
     <!-- Base URL -->
     <div class="form-group">
       <label for="llm-baseUrl">
@@ -84,26 +103,23 @@
           <option value="gpt-4o">GPT-4o</option>
           <option value="gpt-4o-mini">GPT-4o Mini</option>
           <option value="gpt-4-turbo">GPT-4 Turbo</option>
+          <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
           <option value="gpt-4">GPT-4</option>
           <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
         </optgroup>
         <optgroup v-if="currentProvider === 'deepseek' || !currentProvider" label="DeepSeek">
           <option value="deepseek-chat">DeepSeek Chat</option>
           <option value="deepseek-coder">DeepSeek Coder</option>
-          <option value="deepseek-reasoner">DeepSeek Reasoner</option>
         </optgroup>
         <optgroup v-if="currentProvider === 'qwen' || !currentProvider" label="通义千问">
           <option value="qwen-turbo">Qwen Turbo</option>
           <option value="qwen-plus">Qwen Plus</option>
           <option value="qwen-max">Qwen Max</option>
-          <option value="qwen-long">Qwen Long</option>
         </optgroup>
         <optgroup v-if="currentProvider === 'ollama' || !currentProvider" label="Ollama">
           <option value="llama3.2">Llama 3.2</option>
-          <option value="llama3.1">Llama 3.1</option>
           <option value="llama3">Llama 3</option>
           <option value="qwen2.5">Qwen 2.5</option>
-          <option value="deepseek-v2">DeepSeek V2</option>
         </optgroup>
         <option value="custom">-- 自定义模型 --</option>
       </select>
@@ -115,6 +131,7 @@
         placeholder="model-name"
         :disabled="testing"
         @input="$emit('update:customModel', $event.target.value)"
+        @blur="$emit('validate', 'model')"
       />
       <span v-if="errors.model" class="error">{{ errors.model }}</span>
     </div>
@@ -125,7 +142,7 @@
         type="button"
         class="test-btn"
         :disabled="testing || !isFormValid"
-        @click="$emit('test')"
+        @click="handleTest"
       >
         <span v-if="testing">测试中...</span>
         <span v-else>测试连接</span>
@@ -189,6 +206,7 @@ const emit = defineEmits([
   'update:apiKey',
   'update:customBaseUrl',
   'update:customModel',
+  'update:concurrency',
   'providerChange',
   'baseUrlChange',
   'modelChange',
@@ -200,6 +218,19 @@ const emit = defineEmits([
 const currentProvider = computed(() => props.selectedProvider)
 
 const isPresetBaseUrl = computed(() => props.presetBaseUrls.includes(props.formData.baseUrl))
+
+const isFormValid = computed(() => {
+  const baseUrl = props.formData.baseUrl === 'custom' ? props.customBaseUrl : props.formData.baseUrl
+  const model = props.formData.model === 'custom' ? props.customModel : props.formData.model
+  return (
+    props.formData.apiKey.trim() !== '' &&
+    baseUrl.trim() !== '' &&
+    model.trim() !== '' &&
+    !props.errors.apiKey &&
+    !props.errors.baseUrl &&
+    !props.errors.model
+  )
+})
 
 const apiKeyPlaceholder = computed(() => {
   const provider = props.selectedProvider
@@ -217,19 +248,6 @@ const apiKeyHint = computed(() => {
   return '您的 API 密钥将安全保存'
 })
 
-const isFormValid = computed(() => {
-  const baseUrl = props.formData.baseUrl === 'custom' ? props.customBaseUrl : props.formData.baseUrl
-  const model = props.formData.model === 'custom' ? props.customModel : props.formData.model
-  return (
-    props.formData.apiKey.trim() !== '' &&
-    baseUrl.trim() !== '' &&
-    model.trim() !== '' &&
-    !props.errors.apiKey &&
-    !props.errors.baseUrl &&
-    !props.errors.model
-  )
-})
-
 const handleProviderChange = (event) => {
   emit('providerChange', event.target.value)
 }
@@ -240,6 +258,21 @@ const handleBaseUrlChange = (event) => {
 
 const handleModelChange = (event) => {
   emit('modelChange', event.target.value)
+}
+
+const handleConcurrencyChange = (event) => {
+  const value = parseInt(event.target.value) || 1
+  if (value < 1) {
+    emit('update:concurrency', 1)
+  } else if (value > 10) {
+    emit('update:concurrency', 10)
+  } else {
+    emit('update:concurrency', value)
+  }
+}
+
+const handleTest = () => {
+  emit('test')
 }
 </script>
 
@@ -262,11 +295,6 @@ const handleModelChange = (event) => {
   color: #374151;
 }
 
-.required {
-  color: #ef4444;
-  margin-left: 2px;
-}
-
 .form-group input,
 .form-group select {
   border: 1px solid #d7dbe6;
@@ -287,6 +315,28 @@ const handleModelChange = (event) => {
 .form-group select:disabled {
   background: #f9fafb;
   cursor: not-allowed;
+}
+
+.form-group input {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.form-group select {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.required {
+  color: #ef4444;
+  margin-left: 2px;
 }
 
 .error {
@@ -313,7 +363,7 @@ const handleModelChange = (event) => {
 
 .test-btn:hover:not(:disabled) {
   border-color: #3772ff;
-  color: #3772ff;
+  background: #f0f9ff;
 }
 
 .test-btn:disabled {
@@ -322,7 +372,9 @@ const handleModelChange = (event) => {
 }
 
 .test-result {
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
   margin-left: 12px;
 }
 

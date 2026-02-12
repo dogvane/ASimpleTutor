@@ -56,6 +56,7 @@ builder.Services.AddSingleton<ILLMService>(sp =>
         config.Llm.ApiKey,
         config.Llm.BaseUrl,
         config.Llm.Model,
+        config.Llm.Concurrency,
         logger);
 });
 builder.Services.AddSingleton<ITtsService>(sp =>

@@ -95,7 +95,8 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
                     var lines = await File.ReadAllLinesAsync(doc.Path, cancellationToken);
 
                     // 根据章节路径查找对应的章节
-                    var section = FindSectionByPath(doc.Sections, kp.ChapterPath);
+                    var section = doc.FindSectionById(kp.SectionId);
+
                     if (section != null && section.StartLine >= 0 && section.EndLine <= lines.Length)
                     {
                         // 提取章节内容
@@ -115,62 +116,6 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
         }
 
         return string.Join("\n\n", snippetContents);
-    }
-
-    /// <summary>
-    /// 根据章节路径查找对应的章节
-    /// </summary>
-    private Section? FindSectionByPath(List<Section> sections, List<string> path)
-    {
-        if (sections == null || sections.Count == 0 || path == null || path.Count == 0)
-        {
-            return null;
-        }
-
-        foreach (var section in sections)
-        {
-            // 检查路径是否匹配（完全匹配或部分匹配）
-            if (section.HeadingPath.Count > 0)
-            {
-                // 完全匹配
-                if (section.HeadingPath.Count == path.Count)
-                {
-                    var isMatch = true;
-                    for (int i = 0; i < path.Count; i++)
-                    {
-                        if (section.HeadingPath[i] != path[i])
-                        {
-                            isMatch = false;
-                            break;
-                        }
-                    }
-                    if (isMatch)
-                    {
-                        return section;
-                    }
-                }
-
-                // 检查子章节
-                if (section.SubSections != null && section.SubSections.Count > 0)
-                {
-                    var found = FindSectionByPath(section.SubSections, path);
-                    if (found != null)
-                    {
-                        return found;
-                    }
-                }
-            }
-            else if (section.SubSections != null && section.SubSections.Count > 0)
-            {
-                var found = FindSectionByPath(section.SubSections, path);
-                if (found != null)
-                {
-                    return found;
-                }
-            }
-        }
-
-        return null;
     }
 
     private async Task<List<Exercise>> GenerateExercisesAsync(

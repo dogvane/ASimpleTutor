@@ -28,5 +28,11 @@ public interface ILLMService
     /// <param name="apiKey">API 密钥</param>
     /// <param name="baseUrl">API 基础 URL</param>
     /// <param name="model">模型名称</param>
-    void UpdateConfig(string apiKey, string baseUrl, string model);
+    /// <param name="concurrency">并发数，默认为 1</param>
+    void UpdateConfig(string apiKey, string baseUrl, string model, int concurrency = 1);
+
+    /// <summary>
+    /// 获取当前并发数
+    /// </summary>
+    int Concurrency { get; }
 }

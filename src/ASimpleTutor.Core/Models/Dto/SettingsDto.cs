@@ -19,6 +19,11 @@ public class LlmSettingsRequest
     /// 模型名称
     /// </summary>
     public string Model { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 并发数，默认为 1
+    /// </summary>
+    public int Concurrency { get; set; } = 1;
 }
 
 /// <summary>
@@ -50,6 +55,21 @@ public class LlmSettingsResponse
     /// 最后测试时间（ISO 8601 格式）
     /// </summary>
     public string? LastTested { get; set; }
+
+    /// <summary>
+    /// 模型信息（响应片段）
+    /// </summary>
+    public string? ModelInfo { get; set; }
+
+    /// <summary>
+    /// 响应时间（毫秒）
+    /// </summary>
+    public long ResponseTimeMs { get; set; }
+
+    /// <summary>
+    /// 并发数
+    /// </summary>
+    public int Concurrency { get; set; }
 }
 
 /// <summary>

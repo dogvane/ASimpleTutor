@@ -123,7 +123,7 @@ public class Program
             throw new InvalidOperationException("请设置 OPENAI_API_KEY 环境变量或配置 appsettings.json");
         }
         var llmLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<LLMService>();
-        return new LLMService(llmConfig.ApiKey, llmConfig.BaseUrl, llmConfig.Model, llmLogger);
+        return new LLMService(llmConfig.ApiKey, llmConfig.BaseUrl, llmConfig.Model, 1, llmLogger);
     }
 
     private static async Task TestDocumentScanner(

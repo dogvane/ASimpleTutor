@@ -23,11 +23,17 @@ public class LLMService : ILLMService
     private readonly string _cacheDirectory;
     private bool _isOllama;
     private readonly object _lock = new();
+    private SemaphoreSlim _semaphore;
+    private int _concurrency = 1;
 
-    public LLMService(string apiKey, string baseUrl, string model, ILogger<LLMService> logger)
+    public LLMService(string apiKey, string baseUrl, string model, int concurrency, ILogger<LLMService> logger)
     {
         _logger = logger;
         _cacheDirectory = Path.Combine(AppContext.BaseDirectory, "llm_cache");
+        _semaphore = new SemaphoreSlim(concurrency, concurrency);
+        _concurrency = concurrency;
+
+        _logger.LogInformation("LLM 服务初始化完成，当前并发数: {Concurrency}", _concurrency);
 
         // 创建缓存目录
         if (!Directory.Exists(_cacheDirectory))
@@ -71,14 +77,21 @@ public class LLMService : ILLMService
     /// <summary>
     /// 更新 LLM 配置并重新初始化客户端
     /// </summary>
-    public void UpdateConfig(string apiKey, string baseUrl, string model)
+    public void UpdateConfig(string apiKey, string baseUrl, string model, int concurrency = 1)
     {
         lock (_lock)
         {
-            _logger.LogInformation("更新 LLM 配置: ApiKey=***, BaseUrl={BaseUrl}, Model={Model}", baseUrl, model);
+            _logger.LogInformation("更新 LLM 配置: ApiKey=***, BaseUrl={BaseUrl}, Model={Model}, 并发数={Concurrency}", baseUrl, model, concurrency);
+            _concurrency = concurrency;
+            _semaphore = new SemaphoreSlim(concurrency, concurrency);
             InitializeClient(apiKey, baseUrl, model);
         }
     }
+
+    /// <summary>
+    /// 获取当前并发数
+    /// </summary>
+    public int Concurrency => _concurrency;
 
     /// <summary>
     /// 生成缓存键
@@ -189,67 +202,77 @@ public class LLMService : ILLMService
         float? temperature,
         CancellationToken cancellationToken = default)
     {
-        // 生成缓存键
-        var cacheKey = GenerateCacheKey(systemPrompt, userMessage, temperature);
-
-        // 尝试从缓存读取
-        var cachedResponse = await ReadFromCacheAsync(cacheKey);
-        if (!string.IsNullOrEmpty(cachedResponse))
-        {
-            return cachedResponse;
-        }
+        // 使用 semaphore 限制并发数
+        await _semaphore.WaitAsync(cancellationToken);
 
         try
         {
-            _logger.LogDebug("调用 LLM，模型: {Model}, 温度: {Temp}", _model, temperature ?? 0.7f);
+            // 生成缓存键
+            var cacheKey = GenerateCacheKey(systemPrompt, userMessage, temperature);
 
-            var messages = new List<ChatMessage>
+            // 尝试从缓存读取
+            var cachedResponse = await ReadFromCacheAsync(cacheKey);
+            if (!string.IsNullOrEmpty(cachedResponse))
             {
-                ChatMessage.CreateSystemMessage(systemPrompt),
-                ChatMessage.CreateUserMessage(userMessage)
-            };
-
-            var options = new ChatCompletionOptions();
-
-            if (temperature.HasValue)
-            {
-                options.Temperature = temperature.Value;
+                return cachedResponse;
             }
 
-            // 处理超时设置
-            using var cts = new CancellationTokenSource();
-            if (!_isOllama)
+            try
             {
-                // 非 Ollama 模式，设置 30 秒超时
-                cts.CancelAfter(TimeSpan.FromSeconds(300));
-                _logger.LogDebug("非 Ollama 模式，设置 300秒(5分钟) 超时");
+                _logger.LogDebug("调用 LLM，模型: {Model}, 温度: {Temp}, 当前并发数: {Concurrency}", _model, temperature ?? 0.7f, _concurrency);
+
+                var messages = new List<ChatMessage>
+                {
+                    ChatMessage.CreateSystemMessage(systemPrompt),
+                    ChatMessage.CreateUserMessage(userMessage)
+                };
+
+                var options = new ChatCompletionOptions();
+
+                if (temperature.HasValue)
+                {
+                    options.Temperature = temperature.Value;
+                }
+
+                // 处理超时设置
+                using var cts = new CancellationTokenSource();
+                if (!_isOllama)
+                {
+                    // 非 Ollama 模式，设置 30 秒超时
+                    cts.CancelAfter(TimeSpan.FromSeconds(300));
+                    _logger.LogDebug("非 Ollama 模式，设置 300秒(5分钟) 超时");
+                }
+                else
+                {
+                    // Ollama 模式，设置 600 秒超时
+                    cts.CancelAfter(TimeSpan.FromSeconds(600));
+                    _logger.LogDebug("Ollama 模式，设置 600秒(10分钟)超时");
+                }
+
+                // 组合取消令牌
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
+
+                var response = await _client.CompleteChatAsync(messages, options, linkedCts.Token);
+
+                var content = response.Value.Content[0].Text ?? string.Empty;
+                _logger.LogDebug("LLM 响应长度: {Length}", content.Length);
+                _logger.LogDebug("LLM 响应内容（前500字符）: {Content}",
+                    content.Length > 500 ? content.Substring(0, 500) + "..." : content);
+
+                // 写入缓存
+                await WriteToCacheAsync(cacheKey, content);
+
+                return content;
             }
-            else
+            catch (Exception ex)
             {
-                // Ollama 模式，设置 600 秒超时
-                cts.CancelAfter(TimeSpan.FromSeconds(600));
-                _logger.LogDebug("Ollama 模式，设置 600秒(10分钟)超时");
+                _logger.LogError(ex, "LLM 调用失败");
+                throw;
             }
-            
-            // 组合取消令牌
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
-
-            var response = await _client.CompleteChatAsync(messages, options, linkedCts.Token);
-
-            var content = response.Value.Content[0].Text ?? string.Empty;
-            _logger.LogDebug("LLM 响应长度: {Length}", content.Length);
-            _logger.LogDebug("LLM 响应内容（前500字符）: {Content}", 
-                content.Length > 500 ? content.Substring(0, 500) + "..." : content);
-
-            // 写入缓存
-            await WriteToCacheAsync(cacheKey, content);
-
-            return content;
         }
-        catch (Exception ex)
+        finally
         {
-            _logger.LogError(ex, "LLM 调用失败");
-            throw;
+            _semaphore.Release();
         }
     }
 
