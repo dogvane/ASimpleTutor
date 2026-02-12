@@ -4,6 +4,7 @@ using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
 using ASimpleTutor.Core.Models.Dto;
 using ASimpleTutor.Core.Services;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
@@ -217,7 +218,10 @@ public class KnowledgePointsController : ControllerBase
     /// 获取幻灯片卡片
     /// </summary>
     [HttpGet("slide-cards")]
-    public async Task<IActionResult> GetSlideCards([FromQuery] string kpId, CancellationToken cancellationToken)
+    public async Task<IActionResult> GetSlideCards(
+        [FromQuery] string kpId, 
+        [FromServices] IWebHostEnvironment env,
+        CancellationToken cancellationToken)
     {
         if (_knowledgeSystem == null)
         {
@@ -237,48 +241,18 @@ public class KnowledgePointsController : ControllerBase
 
         var slideCards = kp.SlideCards ?? new List<SlideCard>();
 
-        // 详细日志：记录每个 SlideCard 的 SpeechScript 状态
-        _logger.LogInformation("[TTS] 加载知识点 SlideCards，KpId={KpId}, Count={Count}", kpId, slideCards.Count);
-        foreach (var sc in slideCards)
+        // 判断是否需要更新语音脚本
+        var needsUpdateSpeechScript = slideCards.Any(sc => sc.SpeechScript == null);
+        _logger.LogInformation("[TTS] 检查是否需要更新语音脚本，KpId={KpId}, NeedsUpdate={Needs}", kpId, needsUpdateSpeechScript);
+
+        if (!needsUpdateSpeechScript)
         {
-            var hasValue = !string.IsNullOrEmpty(sc.SpeechScript);
-            var length = sc.SpeechScript?.Length ?? 0;
-            _logger.LogDebug("[TTS] 加载时 SlideCard 状态，SlideId={SlideId}, HasSpeechScript={Has}, Length={Length}, IsNullOrEmpty={IsNullOrEmpty}",
-                sc.SlideId, hasValue, length, string.IsNullOrEmpty(sc.SpeechScript));
+            _logger.LogDebug("[TTS] 所有幻灯片卡片已有语音脚本，无需更新");
         }
-
-        // 检查是否有幻灯片卡片缺少 SpeechScript（使用 null 检查而不是 IsNullOrEmpty）
-        var needsRegeneration = slideCards.Any(sc => sc.SpeechScript == null);
-        _logger.LogDebug("[TTS] 检查结果，NeedsRegeneration={Needs}, TotalCount={Total}",
-            needsRegeneration, slideCards.Count);
-        if (needsRegeneration)
+        else
         {
-            _logger.LogInformation("[TTS] 检测到幻灯片卡片缺少 SpeechScript，开始重新生成: {KpId}", kpId);
-            try
-            {
-                var learningPack = await _learningGenerator.GenerateAsync(kp, cancellationToken);
-                if (learningPack?.SlideCards != null && learningPack.SlideCards.Count > 0)
-                {
-                    // 更新知识点的 SlideCards
-                    kp.SlideCards = learningPack.SlideCards;
-                    slideCards = learningPack.SlideCards;
-
-                    // 详细日志：记录生成后的状态
-                    _logger.LogInformation("[TTS] SpeechScript 重新生成完成，KpId={KpId}, Count={Count}", kpId, learningPack.SlideCards.Count);
-                    foreach (var sc in learningPack.SlideCards)
-                    {
-                        _logger.LogDebug("[TTS] 重新生成后状态，SlideId={SlideId}, HasSpeechScript={Has}, Length={Length}",
-                            sc.SlideId,
-                            !string.IsNullOrEmpty(sc.SpeechScript),
-                            sc.SpeechScript?.Length ?? 0);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "生成 SpeechScript 失败: {KpId}", kpId);
-                // 继续返回已有的 SlideCards，即使 SpeechScript 为空
-            }
+            // 获取 TTS 配置并更新
+            await _learningGenerator.UpdateSpeechScriptsAsync(slideCards, cancellationToken);
         }
 
         // 获取 TTS 语速配置
@@ -294,7 +268,19 @@ public class KnowledgePointsController : ControllerBase
 
         foreach (var sc in slideCards)
         {
-            string? audioUrl = null;
+            string? audioUrl = sc.AudioUrl;
+
+            // 检查 audioUrl 在本地文件是否存在，如果不存在，需要将 sc.AudioUrl 设置为 null，然后重新开始生成
+            if (!string.IsNullOrEmpty(audioUrl))
+            {
+                var filePath = Path.Combine(env.WebRootPath, audioUrl.TrimStart('/', '\\'));
+                if (!System.IO.File.Exists(filePath))
+                {
+                    _logger.LogWarning("[TTS] 本地音频文件不存在，重置 AudioUrl 以触发重新生成: {Url}", audioUrl);
+                    audioUrl = null;
+                    sc.AudioUrl = null;
+                }
+            }
 
             // 详细日志：显示每个卡片的 SpeechScript 状态
             var scriptValue = sc.SpeechScript;
@@ -313,10 +299,19 @@ public class KnowledgePointsController : ControllerBase
             {
                 try
                 {
-                    audioUrl = await _ttsService.GetAudioUrlAsync(sc.SpeechScript, cancellationToken);
-                    if (!string.IsNullOrEmpty(audioUrl))
+                    if (string.IsNullOrEmpty(audioUrl) && sc.SpeechScript != null)
                     {
-                        generatedCount++;
+                        audioUrl = await _ttsService.GetAudioUrlAsync(sc.SpeechScript, cancellationToken);
+                        if (!string.IsNullOrEmpty(audioUrl))
+                        {
+                            generatedCount++;
+                            // 更新 sc.AudioUrl 以便下次使用缓存
+                            sc.AudioUrl = audioUrl;
+                        }
+                    }
+                    else if (!string.IsNullOrEmpty(audioUrl))
+                    {
+                        cachedCount++;
                     }
                 }
                 catch (Exception ex)

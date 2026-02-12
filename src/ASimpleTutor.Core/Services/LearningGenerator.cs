@@ -55,7 +55,7 @@ public class LearningGenerator : ILearningGenerator
             if (string.IsNullOrEmpty(snippetTexts) || snippetTexts.Length < 100)
             {
                 _logger.LogError("原文片段为空或长度不足: {KpId}, 长度: {Length}", kp.KpId, snippetTexts?.Length ?? 0);
-                return CreateFallbackLearningPack(kp, new List<SourceSnippet>());
+                return CreateFallbackLearningPack(kp);
             }
 
             // 2. 调用 LLM 生成学习内容
@@ -69,13 +69,13 @@ public class LearningGenerator : ILearningGenerator
             else
             {
                 // 降级：使用原文片段提取要点
-                return CreateFallbackLearningPack(kp, new List<SourceSnippet>());
+                return CreateFallbackLearningPack(kp);
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "学习内容生成失败: {KpId}", kp.KpId);
-            return CreateFallbackLearningPack(kp, new List<SourceSnippet>());
+            return CreateFallbackLearningPack(kp);
         }
     }
 
@@ -125,7 +125,7 @@ public class LearningGenerator : ILearningGenerator
         return string.Join("\n\n", snippetContents);
     }
 
-        private async Task<LearningPack?> GenerateLearningContentAsync(
+    private async Task<LearningPack?> GenerateLearningContentAsync(
             KnowledgePoint kp,
             string snippetTexts,
             bool generateTts,
@@ -272,10 +272,10 @@ public class LearningGenerator : ILearningGenerator
         };
 
         // 为每个幻灯片卡片生成口语化讲解脚本
-        if (generateTts)
-        {
-            await GenerateSpeechScriptsAsync(learningPack.SlideCards, kp, cancellationToken);
-        }
+
+        var cardsToGenerate = learningPack.SlideCards.Where(o=> o.SpeechScript == null).ToList();
+        if(cardsToGenerate.Count > 0)
+            await GenerateSpeechScriptsAsync(cardsToGenerate, cancellationToken);
 
         return learningPack;
     }
@@ -283,27 +283,49 @@ public class LearningGenerator : ILearningGenerator
     /// <summary>
     /// 为幻灯片卡片生成口语化讲解脚本
     /// </summary>
-    private async Task GenerateSpeechScriptsAsync(List<SlideCard> slideCards, KnowledgePoint kp, CancellationToken cancellationToken)
+    private async Task GenerateSpeechScriptsAsync(List<SlideCard> slideCards, CancellationToken cancellationToken)
     {
-        foreach (var card in slideCards)
+        // 并发生成语音脚本，限制并发数为 3
+        await Parallel.ForEachAsync(slideCards,
+            new ParallelOptions { MaxDegreeOfParallelism = 3, CancellationToken = cancellationToken },
+            async (card, ct) =>
+            {
+                try
+                {
+                    _logger.LogDebug("为幻灯片卡片生成语音脚本: {SlideId}", card.SlideId);
+                    card.SpeechScript = await GenerateSpeechScriptAsync(card, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "生成语音脚本失败: {SlideId}", card.SlideId);
+                    card.SpeechScript = null;
+                }
+            });
+    }
+
+    /// <summary>
+    /// 更新幻灯片卡片的语音脚本（只生成缺失的脚本）
+    /// </summary>
+    public async Task UpdateSpeechScriptsAsync(List<SlideCard> slideCards, CancellationToken cancellationToken = default)
+    {
+        // 只为缺少语音脚本的卡片生成脚本
+        var cardsToGenerate = slideCards.Where(c => c.SpeechScript == null).ToList();
+
+        if (cardsToGenerate.Count == 0)
         {
-            try
-            {
-                _logger.LogDebug("为幻灯片卡片生成语音脚本: {SlideId}", card.SlideId);
-                card.SpeechScript = await GenerateSpeechScriptAsync(card, kp, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "生成语音脚本失败: {SlideId}", card.SlideId);
-                card.SpeechScript = null;
-            }
+            _logger.LogDebug("所有幻灯片卡片已有语音脚本，无需更新");
+            return;
         }
+
+        _logger.LogInformation("为 {Count} 张幻灯片卡片更新语音脚本", cardsToGenerate.Count);
+
+        await GenerateSpeechScriptsAsync(cardsToGenerate, cancellationToken);
     }
 
     /// <summary>
     /// 生成单个幻灯片卡片的口语化讲解脚本
     /// </summary>
-    private async Task<string?> GenerateSpeechScriptAsync(SlideCard card, KnowledgePoint kp, CancellationToken cancellationToken)
+    private async Task<string?> GenerateSpeechScriptAsync(SlideCard card, CancellationToken cancellationToken)
     {
         var systemPrompt = @"你是一个专业的教学讲解专家。你的任务是为幻灯片卡片生成口语化的讲解脚本，用于文字转语音（TTS）播放。
 
@@ -324,8 +346,7 @@ public class LearningGenerator : ILearningGenerator
 示例格式：
 这个概念在实际应用中非常关键。具体来说，它包含三个层面的含义。首先是... 其次是... 理解了这几点，我们就能掌握它的核心逻辑。";
 
-        var userMessage = $"知识点标题：{kp.Title}\n" +
-                          $"幻灯片标题：{card.Title}\n" +
+        var userMessage = $"幻灯片标题：{card.Title}\n" +
                           $"幻灯片内容：{card.HtmlContent}\n" +
                           $"幻灯片类型：{card.Type}\n\n" +
                           "请为这张幻灯片生成口语化的讲解脚本：";
@@ -387,43 +408,10 @@ public class LearningGenerator : ILearningGenerator
         };
     }
 
-    private async Task<List<string>> FindRelatedKnowledgePointsAsync(
-        KnowledgePoint kp,
-        CancellationToken cancellationToken)
+    private LearningPack CreateFallbackLearningPack(KnowledgePoint kp)
     {
-        // MVP 阶段暂不实现，返回空列表
-        return new List<string>();
-    }
-
-    private void ValidateLearningPack(LearningPack pack, KnowledgePoint kp)
-    {
-        if (pack.Summary == null)
-        {
-            _logger.LogWarning("学习内容 summary 为空: {KpId}", kp.KpId);
-        }
-        else if (string.IsNullOrEmpty(pack.Summary.Definition))
-        {
-            _logger.LogWarning("学习内容 definition 为空: {KpId}", kp.KpId);
-        }
-
-        if (pack.Levels == null || !pack.Levels.Any(l => l.Level == 1))
-        {
-            _logger.LogWarning("学习内容缺少 level=1 的层次: {KpId}", kp.KpId);
-        }
-    }
-
-    private LearningPack CreateFallbackLearningPack(KnowledgePoint kp, List<SourceSnippet>? snippets)
-    {
-        // 处理 null 或空列表
-        snippets ??= new List<SourceSnippet>();
-
         // 从原文片段简单提取要点
-        var allContent = string.Join("\n", snippets.Select(s => s.Content));
-        var sentences = allContent.Split('.', StringSplitOptions.RemoveEmptyEntries);
-        var keyPoints = sentences.Take(3)
-            .Select(s => s.Trim())
-            .Where(s => s.Length > 10)
-            .ToList();
+        var keyPoints = new List<string> { "内容生成失败，请查看原文" };
 
         return new LearningPack
         {

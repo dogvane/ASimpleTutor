@@ -1,5 +1,6 @@
 using ASimpleTutor.Api.Configuration;
 using ASimpleTutor.Api.Interfaces;
+using ASimpleTutor.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using OpenAI;
 using OpenAI.Audio;
@@ -20,8 +21,9 @@ public class TtsService : ITtsService
     private readonly ILogger<TtsService> _logger;
     private readonly string _audioDirectory;
     private readonly object _lock = new();
+    ISettingsService _settingsService;
 
-    public TtsService(AppConfig config, ILogger<TtsService> logger, IWebHostEnvironment env)
+    public TtsService(AppConfig config, ILogger<TtsService> logger, IWebHostEnvironment env, ISettingsService settingsService)
     {
         _logger = logger;
         _apiKey = config.Tts.ApiKey;
@@ -37,6 +39,8 @@ public class TtsService : ITtsService
             Directory.CreateDirectory(_audioDirectory);
             _logger.LogInformation("创建音频目录: {AudioDir}", _audioDirectory);
         }
+
+        _settingsService = settingsService;
     }
 
     /// <summary>
@@ -70,8 +74,6 @@ public class TtsService : ITtsService
         var fileName = $"{fileHash}.wav";
         var filePath = Path.Combine(_audioDirectory, fileName);
 
-        _logger.LogDebug("[TTS] 请求生成音频，FileName={FileName}, ScriptLength={Length}", fileName, speechScript.Length);
-
         // 3. 检查文件是否已存在
         if (File.Exists(filePath))
         {
@@ -82,9 +84,14 @@ public class TtsService : ITtsService
         // 4. 生成音频
         try
         {
-            await GenerateAudioAsync(speechScript, filePath, cancellationToken);
-            _logger.LogInformation("[TTS] 音频生成成功，FileName={FileName}, FilePath={FilePath}", fileName, filePath);
-            return $"/audios/{fileName}";
+            var setting = await _settingsService.GetTtsSettingsAsync();
+            if (setting.Enabled)
+            {
+                await GenerateAudioAsync(speechScript, filePath, cancellationToken);
+                _logger.LogInformation("[TTS] 音频生成成功，FileName={FileName}, FilePath={FilePath}", fileName, filePath);
+                return $"/audios/{fileName}";
+            }
+            return null;
         }
         catch (Exception ex)
         {

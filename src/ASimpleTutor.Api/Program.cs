@@ -63,8 +63,11 @@ builder.Services.AddSingleton<ITtsService>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<TtsService>>();
     var env = sp.GetRequiredService<IWebHostEnvironment>();
-    return new TtsService(config, logger, env);
+    var ss = sp.GetRequiredService<ISettingsService>();
+
+    return new TtsService(config, logger, env, ss);
 });
+
 builder.Services.AddSingleton<IKnowledgeBuilder, KnowledgeBuilder>();
 builder.Services.AddSingleton<ILearningGenerator, LearningGenerator>();
 builder.Services.AddSingleton<IExerciseGenerator, ExerciseService>();

@@ -14,4 +14,11 @@ public interface ILearningGenerator
     /// <param name="cancellationToken">取消令牌</param>
     /// <returns>学习内容包</returns>
     Task<LearningPack> GenerateAsync(KnowledgePoint kp, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 更新幻灯片卡片的语音脚本（只生成缺失的脚本）
+    /// </summary>
+    /// <param name="slideCards">幻灯片卡片列表</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    Task UpdateSpeechScriptsAsync(List<SlideCard> slideCards, CancellationToken cancellationToken = default);
 }

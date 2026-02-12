@@ -143,6 +143,11 @@ public class SlideCard
     public int Order { get; set; }
 
     /// <summary>
+    /// 如果设置过音频，则是音频的地址文件
+    /// </summary>
+    public string AudioUrl { get; set; }
+
+    /// <summary>
     /// 卡片标题
     /// </summary>
     public string Title { get; set; } = string.Empty;
