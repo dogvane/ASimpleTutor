@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using System.ClientModel;
 using System.Security.Cryptography;
 using System.Text;
+using System.Linq;
 
 namespace ASimpleTutor.Core.Services;
 
@@ -84,9 +85,12 @@ public class LLMService : ILLMService
     /// </summary>
     private string GenerateCacheKey(string systemPrompt, string userMessage, float? temperature)
     {
+        // 使用 MD5 哈希（32 字符），避免文件名过长问题
         var key = $"{systemPrompt}|{userMessage}|{temperature ?? 0.7f}";
-        using var sha256 = SHA256.Create();
-        var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(key));
+        using var md5 = MD5.Create();
+        var bytes = md5.ComputeHash(Encoding.UTF8.GetBytes(key));
+
+        // MD5 总是 32 字符，不需要截取
         return Convert.ToHexString(bytes).ToLower();
     }
 
@@ -95,23 +99,31 @@ public class LLMService : ILLMService
     /// </summary>
     private async Task<string?> ReadFromCacheAsync(string cacheKey)
     {
-        var filePath = Path.Combine(_cacheDirectory, $"{cacheKey}.json");
-        if (File.Exists(filePath))
+        try
         {
-            try
+            // 限制缓存键长度以匹配写入逻辑
+            var safeCacheKey = cacheKey.Length > 200 ? cacheKey.Substring(0, 200) : cacheKey;
+
+            // 生成安全的文件名（必须与写入逻辑一致）
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var safeFileName = new string($"{safeCacheKey}.json".Select(c => invalidChars.Contains(c) ? '_' : c).ToArray());
+
+            var filePath = Path.Combine(_cacheDirectory, safeFileName);
+
+            if (File.Exists(filePath))
             {
                 var content = await File.ReadAllTextAsync(filePath);
                 var cacheEntry = JsonConvert.DeserializeObject<CacheEntry>(content);
                 if (cacheEntry != null)
                 {
-                    _logger.LogInformation("从缓存中读取 LLM 响应");
+                    _logger.LogInformation("从缓存中读取 LLM 响应: {FileName}", safeFileName);
                     return cacheEntry.Response;
                 }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "读取缓存失败: {FilePath}", filePath);
-            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "读取缓存失败: CacheKey={CacheKey}, Message={Message}", cacheKey, ex.Message);
         }
         return null;
     }
@@ -121,9 +133,24 @@ public class LLMService : ILLMService
     /// </summary>
     private async Task WriteToCacheAsync(string cacheKey, string response)
     {
-        var filePath = Path.Combine(_cacheDirectory, $"{cacheKey}.json");
         try
         {
+            // 限制缓存键长度以避免文件名过长问题（Windows MAX_PATH = 260）
+            var safeCacheKey = cacheKey.Length > 200 ? cacheKey.Substring(0, 200) : cacheKey;
+
+            // 生成安全的文件名（移除非法字符）
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var safeFileName = new string($"{safeCacheKey}.json".Select(c => invalidChars.Contains(c) ? '_' : c).ToArray());
+
+            var filePath = Path.Combine(_cacheDirectory, safeFileName);
+
+            // 确保缓存目录存在
+            if (!Directory.Exists(_cacheDirectory))
+            {
+                Directory.CreateDirectory(_cacheDirectory);
+                _logger.LogInformation("创建 LLM 缓存目录: {CacheDir}", _cacheDirectory);
+            }
+
             var cacheEntry = new CacheEntry
             {
                 Response = response,
@@ -131,12 +158,13 @@ public class LLMService : ILLMService
                 Timestamp = DateTime.UtcNow
             };
             var content = JsonConvert.SerializeObject(cacheEntry, Formatting.Indented);
+
             await File.WriteAllTextAsync(filePath, content);
-            _logger.LogInformation("将 LLM 响应写入缓存");
+            _logger.LogInformation("将 LLM 响应写入缓存: {FileName}", safeFileName);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "写入缓存失败: {FilePath}", filePath);
+            _logger.LogError(ex, "写入缓存失败: CacheKey={CacheKey}, Message={Message}", cacheKey, ex.Message);
         }
     }
 
