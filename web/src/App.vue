@@ -1,90 +1,78 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import {
-  activateBookHub,
-  getBookHubs,
-  getChapters,
-  getExercises,
-  getExercisesStatus,
-  getKnowledgePoints,
-  getOverview,
-  getSourceContent,
-  getDetailedContent,
-  getSlideCards,
-  scanBooks,
-  searchChapters,
-  submitExercise,
-  submitFeedback,
-} from './api'
+import { computed, onMounted, watch } from 'vue'
 import ChapterTree from './components/ChapterTree.vue'
 import EmptyState from './components/EmptyState.vue'
 import ErrorBanner from './components/ErrorBanner.vue'
 import ExercisesDrawer from './components/ExercisesDrawer.vue'
 import LoadingOverlay from './components/LoadingOverlay.vue'
-import SettingsDialog from './components/SettingsDialog.vue'
+import SettingsDialog from './components/settings/SettingsDialog.vue'
 import SlideViewer from './components/SlideViewer.vue'
 import TopBar from './components/TopBar.vue'
+import KnowledgePointList from './components/KnowledgePointList.vue'
+import { useAppStore } from './composables/useAppStore'
+import { useChapterLoader } from './composables/useChapterLoader'
+import { useKnowledgePointLoader } from './composables/useKnowledgePointLoader'
+import { useExercise } from './composables/useExercise'
 
-const bookHubs = ref([])
-const activeBookHubId = ref('')
-const scanStatus = ref('idle')
-const scanMessage = ref('')
-const chapters = ref([])
-const chaptersLoading = ref(false)
-const expandedIds = ref([])
-const selectedChapter = ref(null)
-const searchQuery = ref('')
-const searchResults = ref([])
-const searchActiveIndex = ref(0)
-const knowledgePoints = ref([])
-const selectedKp = ref(null)
-const exercisesStatus = ref('idle')
-const exercisesDrawerOpen = ref(false)
-const exercises = ref([])
-const exercisesAnswers = ref({})
-const exercisesFeedback = ref({})
+// 初始化状态管理
+const state = useAppStore()
+const {
+  bookHubs,
+  activeBookHubId,
+  scanStatus,
+  chapters,
+  expandedIds,
+  selectedChapter,
+  searchQuery,
+  searchResults,
+  searchActiveIndex,
+  knowledgePoints,
+  selectedKp,
+  slides,
+  currentSlideIndex,
+  audioAvailable,
+  quizAnswers,
+  quizFeedback,
+  globalError,
+  globalLoading,
+  learningLoading,
+  settingsDialogOpen,
+  currentPath,
+  hasNextChapter,
+  setError,
+} = state
 
-// 习题幻灯片相关状态
-const quizAnswers = ref({})
-const quizFeedback = ref({})
-const globalError = ref(null)
-const globalLoading = ref(false)
-const learningLoading = ref(false)
+// 初始化各功能模块
+const chapterLoader = useChapterLoader(state)
+const {
+  loadBookHubs,
+  scanAndLoad,
+  changeBookHub,
+  toggleExpand,
+  selectChapter,
+  setupSearch,
+  findChapterById,
+  nextChapter: getNextChapter,
+} = chapterLoader
 
-// 幻灯片相关状态
-const slides = ref([])
-const currentSlideIndex = ref(0)
-const audioAvailable = ref(false)
+const kpLoader = useKnowledgePointLoader(state)
+const {
+  loadKnowledgePoints,
+  selectKp,
+} = kpLoader
 
-// 设置对话框状态
-const settingsDialogOpen = ref(false)
+const exerciseModule = useExercise(state)
+const {
+  openExercises,
+  closeExercises,
+  updateAnswer,
+  submitAllAnswers,
+  submitOneAnswer,
+  updateQuizAnswer,
+  submitQuizAnswer,
+} = exerciseModule
 
-// 打开设置对话框
-const openSettings = () => {
-  settingsDialogOpen.value = true
-}
-
-// 设置保存成功后的处理
-const handleSettingsSaved = () => {
-  // 配置已实时生效，无需重启
-  console.log('配置已保存并实时生效')
-}
-
-// 检查音频是否可用
-const checkAudioAvailability = async (kpId) => {
-  // 预留音频检查逻辑
-  // 实际实现时，这里应该检查是否存在对应的音频文件
-  // 目前返回false，因为这是预留功能
-  return false
-}
-
-const currentPath = computed(() => {
-  if (selectedChapter.value && selectedKp.value) {
-    return `${selectedChapter.value.title} > ${selectedKp.value.title}`
-  }
-  return selectedChapter.value?.title || ''
-})
-
+// 计算属性
 const currentSlideTitle = computed(() => {
   if (selectedKp.value) {
     return selectedKp.value.title
@@ -92,474 +80,28 @@ const currentSlideTitle = computed(() => {
   return selectedChapter.value?.title || ''
 })
 
-const hasNextChapter = computed(() => {
-  if (!selectedChapter.value) return false
-  const currentIndex = chapters.value.findIndex(ch => ch.id === selectedChapter.value.id)
-  return currentIndex !== -1 && currentIndex < chapters.value.length - 1
-})
-
-const setError = (error) => {
-  if (!error) {
-    globalError.value = null
-    return
-  }
-
-  globalError.value = {
-    message: error.message || '服务暂时不可用，请检查网络。',
-    code: error.code || '',
-  }
-}
-
-const resetLearningState = () => {
-  knowledgePoints.value = []
-  selectedKp.value = null
-  slides.value = []
-  currentSlideIndex.value = 0
-  exercisesStatus.value = 'idle'
-  exercises.value = []
-  exercisesAnswers.value = {}
-  exercisesFeedback.value = {}
-  
-  // 重置习题幻灯片相关状态
-  quizAnswers.value = {}
-  quizFeedback.value = {}
-}
-
-const loadBookHubs = async () => {
-  globalLoading.value = true
-  setError(null)
-  try {
-    const data = await getBookHubs()
-    bookHubs.value = data.items || []
-    const nextActiveId = data.activeId || bookHubs.value[0]?.id || ''
-    activeBookHubId.value = nextActiveId
-    if (nextActiveId) {
-      if (!data.activeId) {
-        await activateBookHub(nextActiveId)
-      } else {
-        await loadChapters()
-      }
-    } else {
-      setError({ message: '未配置书籍中心，请先配置并激活。', code: 'BOOKHUB_NOT_FOUND' })
-    }
-  } catch (error) {
-    setError(error)
-  } finally {
-    globalLoading.value = false
-  }
-}
-
-const scanAndLoad = async () => {
-  if (!activeBookHubId.value) {
-    setError({ message: '请先激活书籍中心', code: 'BOOKHUB_NOT_FOUND' })
-    return
-  }
-  scanStatus.value = 'scanning'
-  scanMessage.value = ''
-  chapters.value = []
-  expandedIds.value = []
-  selectedChapter.value = null
-  resetLearningState()
-  setError(null)
-  
-  // 不阻塞全局状态，允许用户进行其他操作
-  try {
-    // 发送扫描请求
-    await scanBooks()
-    
-    // 扫描请求发送成功后，立即开始加载章节
-    // 这样可以在服务端处理学习内容生成的同时，前端显示章节列表
-    await loadChapters()
-    scanStatus.value = 'ready'
-  } catch (error) {
-    scanStatus.value = 'failed'
-    scanMessage.value = error.message
-    setError(error)
-  }
-}
-
-const loadChapters = async () => {
-  chaptersLoading.value = true
-  setError(null)
-  try {
-    const data = await getChapters()
-    const normalizeNode = (node) => ({
-      id: node.id ?? node.Id,
-      title: node.title ?? node.Title,
-      level: node.level ?? node.Level,
-      expanded: node.expanded ?? node.Expanded,
-      children: ((node.children ?? node.Children) || []).map(normalizeNode),
-    })
-    const rawItems = Array.isArray(data)
-      ? data
-      : Array.isArray(data?.items)
-        ? data.items
-        : Array.isArray(data?.Items)
-          ? data.Items
-          : data?.id || data?.Id
-            ? [data]
-            : []
-    chapters.value = rawItems.map(normalizeNode)
-    expandedIds.value = chapters.value
-      .filter((item) => item.expanded)
-      .map((item) => item.id)
-    if (chapters.value.length) {
-      selectChapter(chapters.value[0])
-    }
-  } catch (error) {
-    setError(error)
-  } finally {
-    chaptersLoading.value = false
-  }
-}
-
-const changeBookHub = async (bookHubId) => {
-  if (!bookHubId || bookHubId === activeBookHubId.value) return
-  globalLoading.value = true
-  setError(null)
-  try {
-    await activateBookHub(bookHubId)
-    activeBookHubId.value = bookHubId
-    await scanAndLoad()
-  } catch (error) {
-    setError(error)
-  } finally {
-    globalLoading.value = false
-  }
-}
-
-const toggleExpand = (id) => {
-  if (expandedIds.value.includes(id)) {
-    expandedIds.value = expandedIds.value.filter((item) => item !== id)
-  } else {
-    expandedIds.value = [...expandedIds.value, id]
-  }
-}
-
-const selectChapter = async (chapter) => {
-  if (!chapter || selectedChapter.value?.id === chapter.id) return
-  selectedChapter.value = chapter
-  resetLearningState()
-  await loadKnowledgePoints(chapter.id)
-  
-  // 实现章节串联播放功能
-  if (knowledgePoints.value.length > 0) {
-    // 加载第一个知识点的幻灯片
-    await selectKp(knowledgePoints.value[0])
-  }
-}
-
-const loadKnowledgePoints = async (chapterId) => {
-  learningLoading.value = true
-  setError(null)
-  try {
-    const data = await getKnowledgePoints(chapterId)
-    knowledgePoints.value = (data.items || []).map((item) => ({
-      id: item.id ?? item.kpId ?? item.KpId,
-      title: item.title ?? item.Title,
-      summary: item.summary ?? item.Summary,
-    }))
-    if (knowledgePoints.value.length) {
-      selectKp(knowledgePoints.value[0])
-    }
-  } catch (error) {
-    setError(error)
-  } finally {
-    learningLoading.value = false
-  }
-}
-
-const selectKp = async (kp) => {
-  if (!kp || selectedKp.value?.id === kp.id) return
-  selectedKp.value = kp
-  slides.value = []
-  currentSlideIndex.value = 0
-  exercisesStatus.value = 'idle'
-  await loadSlides(kp.id)
-  await loadExercisesStatus(kp.id)
-  // 检查音频是否可用
-  audioAvailable.value = await checkAudioAvailability(kp.id)
-}
-
-const loadSlides = async (kpId) => {
-  learningLoading.value = true
-  setError(null)
-  try {
-    const slideItems = []
-    
-    try {
-      const slideCardsData = await getSlideCards(kpId)
-      if (slideCardsData?.slideCards?.length > 0) {
-        slideItems.push(...slideCardsData.slideCards.map(sc => ({
-          id: sc.slideId,
-          content: sc.htmlContent,
-          type: sc.type.toLowerCase(),
-          title: sc.title,
-          speechScript: sc.speechScript,
-          audioUrl: sc.audioUrl,
-          speed: sc.speed || 1.0,
-          sources: sc.sourceReferences?.map(sr => ({
-            text: sr.content?.substring(0, 50) + '...',
-            fileName: sr.filePath ? sr.filePath.split('/').pop() : '',
-            ...sr
-          })) || []
-        })))
-      }
-    } catch (error) {
-      console.error('加载 SlideCards 失败，使用降级方案:', error)
-    }
-    
-    if (slideItems.length === 0) {
-      const overviewData = await getOverview(kpId)
-      if (overviewData) {
-        let overviewContent = ''
-        if (typeof overviewData.overview === 'object') {
-          overviewContent = `<div class="overview-content">`
-          
-          if (overviewData.overview.definition) {
-            overviewContent += `<div class="definition-section">
-              <h2>定义</h2>
-              <p>${overviewData.overview.definition}</p>
-            </div>`
-          }
-          
-          if (overviewData.overview.keyPoints && overviewData.overview.keyPoints.length > 0) {
-            overviewContent += `<div class="keypoints-section">
-              <h2>关键点</h2>
-              <ul>
-                ${overviewData.overview.keyPoints.map(point => `<li>${point}</li>`).join('')}
-              </ul>
-            </div>`
-          }
-          
-          if (overviewData.overview.pitfalls && overviewData.overview.pitfalls.length > 0) {
-            overviewContent += `<div class="pitfalls-section">
-              <h2>注意事项</h2>
-              <ul>
-                ${overviewData.overview.pitfalls.map(pitfall => `<li>${pitfall}</li>`).join('')}
-              </ul>
-            </div>`
-          }
-          
-          overviewContent += `</div>`
-        } else if (typeof overviewData.overview === 'string') {
-          overviewContent = `<p>${overviewData.overview}</p>`
-        }
-        
-        slideItems.push({
-          id: `slide_${kpId}_1`,
-          content: `<h1>${overviewData.title}</h1>${overviewContent}`,
-          type: 'content',
-          sources: []
-        })
-        
-        try {
-          const detailedContent = await getDetailedContent(kpId, 'detailed')
-          if (detailedContent?.levels) {
-            if (detailedContent.levels.brief?.content) {
-              slideItems.push({
-                id: `slide_${kpId}_2`,
-                content: `<h2>概览</h2><p>${detailedContent.levels.brief.content}</p>`,
-                type: 'content',
-                sources: []
-              })
-            }
-            
-            if (detailedContent.levels.detailed?.content) {
-              slideItems.push({
-                id: `slide_${kpId}_3`,
-                content: `<h2>详细内容</h2><p>${detailedContent.levels.detailed.content}</p>`,
-                type: 'content',
-                sources: []
-              })
-            }
-            
-            if (detailedContent.levels.deep?.content) {
-              slideItems.push({
-                id: `slide_${kpId}_4`,
-                content: `<h2>深度解析</h2><p>${detailedContent.levels.deep.content}</p>`,
-                type: 'content',
-                sources: []
-              })
-            }
-          }
-        } catch (error) {
-          console.error('加载详细内容失败:', error)
-        }
-        
-        try {
-          const sourceData = await getSourceContent(kpId)
-          if (sourceData?.sourceItems?.length > 0) {
-            const sourceContent = sourceData.sourceItems.map(item => `
-              <div class="source-item">
-                <h3>${item.fileName}</h3>
-                <p>${item.headingPath}</p>
-                <div class="source-text">${item.content}</div>
-              </div>
-            `).join('')
-            
-            slideItems.push({
-              id: `slide_${kpId}_source`,
-              content: `<h2>原文来源</h2>${sourceContent}`,
-              type: 'source',
-              sources: sourceData.sourceItems.map(item => ({
-                text: item.content.substring(0, 50) + '...',
-                ...item
-              }))
-            })
-          }
-        } catch (error) {
-          console.error('加载原文失败:', error)
-        }
-      }
-    }
-    
-    const exercisesStatusData = await getExercisesStatus(kpId)
-    if (exercisesStatusData?.hasExercises) {
-      try {
-        const exercisesData = await getExercises(kpId)
-        if (exercisesData?.items?.length > 0) {
-          exercisesData.items.forEach((exercise, index) => {
-            slideItems.push({
-              id: `slide_${kpId}_exercise_${index}`,
-              content: `<h2>${exercise.question}</h2>`,
-              type: 'quiz',
-              exercise: exercise,
-              sources: []
-            })
-          })
-        }
-      } catch (error) {
-        console.error('加载习题失败:', error)
-      }
-    }
-    
-    slides.value = slideItems
-  } catch (error) {
-    setError(error)
-  } finally {
-    learningLoading.value = false
-  }
-}
-
-const loadExercisesStatus = async (kpId) => {
-  try {
-    const data = await getExercisesStatus(kpId)
-    exercisesStatus.value = data.status || (data.hasExercises ? 'ready' : 'idle')
-  } catch (error) {
-    exercisesStatus.value = 'idle'
-  }
-}
-
-const openExercises = async () => {
-  exercisesDrawerOpen.value = true
-  if (exercisesStatus.value !== 'ready') return
-  try {
-    const data = await getExercises(selectedKp.value.id)
-    exercises.value = data.items || []
-    const answers = {}
-    exercises.value.forEach((item) => {
-      answers[item.id] = ''
-    })
-    exercisesAnswers.value = answers
-    exercisesFeedback.value = {}
-  } catch (error) {
-    setError(error)
-  }
-}
-
-const closeExercises = () => {
-  exercisesDrawerOpen.value = false
-}
-
-const updateAnswer = ({ id, value }) => {
-  exercisesAnswers.value = { ...exercisesAnswers.value, [id]: value }
-}
-
-const submitAllAnswers = async () => {
-  if (!selectedKp.value) return
-  const answers = Object.entries(exercisesAnswers.value).map(([exerciseId, answer]) => ({
-    exerciseId,
-    answer,
-  }))
-  try {
-    const data = await submitFeedback(selectedKp.value.id, answers)
-    const feedbackMap = {}
-    data.items?.forEach((item) => {
-      feedbackMap[item.exerciseId] = item
-    })
-    exercisesFeedback.value = feedbackMap
-  } catch (error) {
-    setError(error)
-  }
-}
-
-const submitOneAnswer = async (exerciseId) => {
-  const answer = exercisesAnswers.value[exerciseId]
-  try {
-    const data = await submitExercise(exerciseId, answer)
-    exercisesFeedback.value = {
-      ...exercisesFeedback.value,
-      [exerciseId]: data,
-    }
-  } catch (error) {
-    setError(error)
-  }
-}
-
-// 习题幻灯片相关函数
-const updateQuizAnswer = ({ exerciseId, value }) => {
-  quizAnswers.value = { ...quizAnswers.value, [exerciseId]: value }
-}
-
-const submitQuizAnswer = async (event) => {
-  const { exerciseId, answer } = event
-  try {
-    const data = await submitExercise(exerciseId, answer)
-    quizFeedback.value = {
-      ...quizFeedback.value,
-      [exerciseId]: data,
-    }
-    return data
-  } catch (error) {
-    setError(error)
-    return null
-  }
-}
-
-const onSearchInput = (value) => {
-  searchQuery.value = value
-}
-
-const onSearchKeydown = (event) => {
-  if (!searchQuery.value || !searchResults.value.length) return
-  if (event.key === 'ArrowDown') {
-    event.preventDefault()
-    searchActiveIndex.value = (searchActiveIndex.value + 1) % searchResults.value.length
-  }
-  if (event.key === 'ArrowUp') {
-    event.preventDefault()
-    searchActiveIndex.value =
-      (searchActiveIndex.value - 1 + searchResults.value.length) % searchResults.value.length
-  }
-  if (event.key === 'Enter') {
-    event.preventDefault()
-    const item = searchResults.value[searchActiveIndex.value]
-    if (item) {
-      handleSearchSelect(item)
-    }
-  }
-}
-
+// 搜索处理 - 需要在 setupSearch 调用前定义
 const handleSearchSelect = (item) => {
   const target = findChapterById(chapters.value, item.id)
   if (target) {
-    selectChapter(target)
+    handleSelectChapter(target)
   }
   searchQuery.value = ''
   searchResults.value = []
 }
 
+const { onSearchInput, onSearchKeydown, watchSearch } = setupSearch(handleSearchSelect)
+
+// 选择章节后自动加载知识点
+const handleSelectChapter = async (chapter) => {
+  selectChapter(chapter)
+  const kps = await loadKnowledgePoints(chapter.id)
+  if (kps.length > 0) {
+    await selectKp(kps[0])
+  }
+}
+
+// 刷新处理
 const handleRefresh = async (type) => {
   if (!activeBookHubId.value) {
     setError({ message: '请先激活书籍中心', code: 'BOOKHUB_NOT_FOUND' })
@@ -572,36 +114,28 @@ const handleRefresh = async (type) => {
       break
     case 'exercises':
       if (selectedKp.value) {
-        await loadExercisesStatus(selectedKp.value.id)
+        await kpLoader.loadExercisesStatus(selectedKp.value.id)
       }
       break
     case 'knowledge':
       if (selectedChapter.value) {
-        await loadKnowledgePoints(selectedChapter.value.id)
+        const kps = await loadKnowledgePoints(selectedChapter.value.id)
+        if (kps.length > 0 && (!selectedKp.value || !kps.find(kp => kp.id === selectedKp.value.id))) {
+          await selectKp(kps[0])
+        }
       }
       break
     case 'graph':
-      await loadChapters()
+      await chapterLoader.loadChapters()
       break
     default:
       console.warn('未知的刷新类型:', type)
   }
 }
 
-const findChapterById = (list, id) => {
-  for (const node of list) {
-    if (node.id === id) return node
-    if (node.children?.length) {
-      const found = findChapterById(node.children, id)
-      if (found) return found
-    }
-  }
-  return null
-}
-
+// 幻灯片切换处理
 const handleSlideChange = (event) => {
   if (event === 'next_knowledge_point') {
-    // 切换到下一个知识点
     const currentIndex = knowledgePoints.value.findIndex(kp => kp.id === selectedKp.value?.id)
     if (currentIndex !== -1 && currentIndex < knowledgePoints.value.length - 1) {
       selectKp(knowledgePoints.value[currentIndex + 1])
@@ -611,36 +145,27 @@ const handleSlideChange = (event) => {
   }
 }
 
+// 下一章处理
 const handleNextChapter = () => {
-  if (!selectedChapter.value) return
-  const currentIndex = chapters.value.findIndex(ch => ch.id === selectedChapter.value.id)
-  if (currentIndex !== -1 && currentIndex < chapters.value.length - 1) {
-    const nextChapter = chapters.value[currentIndex + 1]
-    selectChapter(nextChapter)
+  const next = getNextChapter()
+  if (next) {
+    handleSelectChapter(next)
   }
 }
 
-let searchTimer
-watch(
-  searchQuery,
-  (value) => {
-    if (searchTimer) clearTimeout(searchTimer)
-    if (!value) {
-      searchResults.value = []
-      return
-    }
-    searchTimer = setTimeout(async () => {
-      try {
-        const data = await searchChapters(value)
-        searchResults.value = data.items || []
-        searchActiveIndex.value = 0
-      } catch (error) {
-        setError(error)
-      }
-    }, 300)
-  },
-)
+// 设置对话框处理
+const openSettings = () => {
+  settingsDialogOpen.value = true
+}
 
+const handleSettingsSaved = () => {
+  console.log('配置已保存并实时生效')
+}
+
+// 监听搜索
+watchSearch(watch)
+
+// 初始化
 onMounted(() => {
   loadBookHubs()
 })
@@ -675,22 +200,17 @@ onMounted(() => {
           :search-results="searchResults"
           :search-active-index="searchActiveIndex"
           @toggle="toggleExpand"
-          @select="selectChapter"
+          @select="handleSelectChapter"
           @select-search="handleSearchSelect"
         />
-        
+
         <div v-if="knowledgePoints.length > 0" class="section-title">知识点</div>
-        <div v-if="knowledgePoints.length > 0" class="knowledge-points-list">
-          <div 
-            v-for="kp in knowledgePoints" 
-            :key="kp.id"
-            class="knowledge-point-item"
-            :class="{ active: selectedKp?.id === kp.id }"
-            @click="selectKp(kp)"
-          >
-            {{ kp.title }}
-          </div>
-        </div>
+        <KnowledgePointList
+          v-if="knowledgePoints.length > 0"
+          :knowledge-points="knowledgePoints"
+          :selected-kp-id="selectedKp?.id || ''"
+          @select="selectKp"
+        />
       </aside>
 
       <main class="main">
@@ -775,29 +295,5 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-}
-
-.knowledge-points-list {
-  margin-top: 20px;
-  padding: 0 16px;
-}
-
-.knowledge-point-item {
-  padding: 8px 12px;
-  margin-bottom: 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 14px;
-}
-
-.knowledge-point-item:hover {
-  background-color: rgba(0, 123, 255, 0.1);
-}
-
-.knowledge-point-item.active {
-  background-color: rgba(0, 123, 255, 0.2);
-  font-weight: 500;
-  border-left: 3px solid #007bff;
 }
 </style>

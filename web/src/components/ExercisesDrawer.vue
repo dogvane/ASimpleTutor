@@ -14,34 +14,15 @@
         <div v-if="status === 'generating'" class="hint">习题生成中，请稍后再试</div>
         <div v-else-if="!exercises.length" class="hint">暂无习题</div>
         <div v-else class="list">
-          <div v-for="exercise in exercises" :key="exercise.id" class="card">
-            <div class="question">
-              <span class="type">{{ typeLabel(exercise.type) }}</span>
-              <span>{{ exercise.question }}</span>
-            </div>
-            <div class="answer">
-              <label v-for="option in exercise.options" :key="option" class="option">
-                <input
-                  type="radio"
-                  :name="exercise.id"
-                  :value="option"
-                  :checked="answers[exercise.id] === option"
-                  @change="$emit('answer-change', { id: exercise.id, value: option })"
-                />
-                {{ option }}
-              </label>
-            </div>
-            <div class="actions">
-              <button type="button" class="submit" @click="$emit('submit-one', exercise.id)">提交本题</button>
-              <div v-if="feedback[exercise.id]" class="feedback">
-                <span :class="['badge', feedback[exercise.id].correct ? 'ok' : 'bad']">
-                  {{ feedback[exercise.id].correct ? '正确' : '错误' }}
-                </span>
-                <div class="explain">{{ feedback[exercise.id].explanation }}</div>
-                <div class="ref">参考答案：{{ feedback[exercise.id].referenceAnswer }}</div>
-              </div>
-            </div>
-          </div>
+          <ExerciseCard
+            v-for="exercise in exercises"
+            :key="exercise.id"
+            :exercise="exercise"
+            :selected-answer="answers[exercise.id]"
+            :feedback="feedback[exercise.id]"
+            @answer-change="$emit('answer-change', $event)"
+            @submit-one="$emit('submit-one', $event)"
+          />
         </div>
       </div>
 
@@ -53,6 +34,8 @@
 </template>
 
 <script setup>
+import ExerciseCard from './exercise/ExerciseCard.vue'
+
 defineProps({
   open: {
     type: Boolean,
@@ -76,11 +59,7 @@ defineProps({
   },
 })
 
-const typeLabel = (type) => {
-  if (type === 'SingleChoice') return '单选题'
-  if (type === 'TrueFalse') return '判断题'
-  return '题目'
-}
+defineEmits(['close', 'answer-change', 'submit-one', 'submit-all'])
 </script>
 
 <style scoped>
@@ -145,103 +124,6 @@ header p {
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-
-.card {
-  border: 1px solid #edf0f5;
-  border-radius: 12px;
-  padding: 12px;
-  background: #f9fafb;
-}
-
-.question {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1f2937;
-  display: flex;
-  gap: 8px;
-}
-
-.type {
-  background: #e0e7ff;
-  color: #4338ca;
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 6px;
-}
-
-.answer {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.option {
-  font-size: 13px;
-  color: #374151;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-textarea {
-  width: 100%;
-  min-height: 72px;
-  resize: vertical;
-  border-radius: 8px;
-  border: 1px solid #d7dbe6;
-  padding: 8px;
-  font-size: 13px;
-}
-
-.actions {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.submit {
-  border: none;
-  background: #3772ff;
-  color: #fff;
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  align-self: flex-start;
-  cursor: pointer;
-}
-
-.feedback {
-  border-top: 1px dashed #e5e7eb;
-  padding-top: 8px;
-  font-size: 12px;
-  color: #4b5563;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 6px;
-  border-radius: 999px;
-  font-size: 11px;
-  margin-bottom: 6px;
-}
-
-.badge.ok {
-  background: #ecfdf3;
-  color: #047857;
-}
-
-.badge.bad {
-  background: #fff1f2;
-  color: #be123c;
-}
-
-.ref {
-  color: #6b7280;
-  margin-top: 4px;
 }
 
 footer {
