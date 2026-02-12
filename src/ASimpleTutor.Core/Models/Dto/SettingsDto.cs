@@ -125,6 +125,11 @@ public class TestLlmConnectionResponse
 public class TtsSettingsRequest
 {
     /// <summary>
+    /// 是否启用 TTS 功能
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
     /// API 密钥
     /// </summary>
     public string ApiKey { get; set; } = string.Empty;
@@ -150,6 +155,11 @@ public class TtsSettingsRequest
 /// </summary>
 public class TtsSettingsResponse
 {
+    /// <summary>
+    /// 是否启用 TTS 功能
+    /// </summary>
+    public bool Enabled { get; set; } = true;
+
     /// <summary>
     /// 脱敏后的 API 密钥（sk-***...xyz 格式）
     /// </summary>

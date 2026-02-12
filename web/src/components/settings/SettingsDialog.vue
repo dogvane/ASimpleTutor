@@ -57,6 +57,7 @@
           :custom-voice="ttsCustomVoice"
           :errors="ttsErrors"
           :saving="ttsSaving"
+          @update:enabled="ttsFormData.enabled = $event"
           @update:api-key="ttsFormData.apiKey = $event"
           @update:custom-base-url="ttsCustomBaseUrl = $event"
           @update:custom-voice="ttsCustomVoice = $event"
@@ -267,6 +268,7 @@ const handleLlmSubmit = () => {}
 
 // ==================== TTS 配置 ====================
 const ttsFormData = reactive({
+  enabled: true,
   apiKey: '',
   baseUrl: 'https://api.openai.com/v1',
   voice: 'alloy',
@@ -371,6 +373,7 @@ const loadSettings = async () => {
       const loadedUrl = ttsSettings.baseUrl || 'https://api.openai.com/v1'
       const loadedVoice = ttsSettings.voice || 'alloy'
       const loadedSpeed = ttsSettings.speed || 1.0
+      const loadedEnabled = ttsSettings.enabled !== undefined ? ttsSettings.enabled : true
 
       if (ttsPresetBaseUrls.includes(loadedUrl)) {
         ttsFormData.baseUrl = loadedUrl
@@ -381,6 +384,7 @@ const loadSettings = async () => {
 
       ttsFormData.voice = loadedVoice
       ttsFormData.speed = loadedSpeed
+      ttsFormData.enabled = loadedEnabled
     }
   } catch (error) {
     console.error('加载配置失败:', error)
@@ -414,6 +418,7 @@ const handleSave = async () => {
 
     try {
       await updateTtsSettings({
+        enabled: ttsFormData.enabled,
         apiKey: ttsFormData.apiKey,
         baseUrl: ttsActualBaseUrl.value,
         voice: ttsActualVoice.value,
@@ -443,6 +448,7 @@ watch(
       llmCustomBaseUrl.value = ''
       llmCustomModel.value = ''
       llmFormData.concurrency = 1
+      ttsFormData.enabled = true
       ttsFormData.apiKey = ''
       ttsCustomBaseUrl.value = ''
       ttsCustomVoice.value = ''

@@ -1,5 +1,21 @@
 <template>
   <form @submit.prevent="$emit('submit')" class="settings-form">
+    <!-- 启用 TTS 开关 -->
+    <div class="form-group">
+      <label for="tts-enabled" class="switch-label">
+        启用 TTS 功能
+        <input
+          id="tts-enabled"
+          type="checkbox"
+          :checked="formData.enabled"
+          :disabled="saving"
+          @change="$emit('update:enabled', $event.target.checked)"
+        />
+        <span class="switch-slider"></span>
+      </label>
+      <span class="hint">开启后将自动为学习内容生成语音讲解</span>
+    </div>
+
     <!-- API Key -->
     <div class="form-group">
       <label for="tts-apiKey">
@@ -133,6 +149,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
+  'update:enabled',
   'update:apiKey',
   'update:customBaseUrl',
   'update:customVoice',
@@ -238,5 +255,46 @@ const handleVoiceChange = (event) => {
   color: #3772ff;
   min-width: 50px;
   text-align: center;
+}
+
+/* 开关样式 */
+.switch-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.switch-label input[type="checkbox"] {
+  display: none;
+}
+
+.switch-slider {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background-color: #d1d5db;
+  border-radius: 24px;
+  transition: background-color 0.2s;
+}
+
+.switch-slider::before {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.switch-label input:checked + .switch-slider {
+  background-color: #3772ff;
+}
+
+.switch-label input:checked + .switch-slider::before {
+  transform: translateX(20px);
 }
 </style>

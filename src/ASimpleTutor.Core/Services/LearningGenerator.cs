@@ -13,20 +13,27 @@ public class LearningGenerator : ILearningGenerator
     private readonly KnowledgeSystemStore _knowledgeSystemStore;
     private readonly ILLMService _llmService;
     private readonly ILogger<LearningGenerator> _logger;
+    private readonly ISettingsService _settingsService;
 
     public LearningGenerator(
         KnowledgeSystemStore knowledgeSystemStore,
         ILLMService llmService,
-        ILogger<LearningGenerator> logger)
+        ILogger<LearningGenerator> logger,
+        ISettingsService settingsService)
     {
         _knowledgeSystemStore = knowledgeSystemStore;
         _llmService = llmService;
         _logger = logger;
+        _settingsService = settingsService;
     }
 
     public async Task<LearningPack> GenerateAsync(KnowledgePoint kp, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("生成学习内容: {KpId} - {Title}", kp.KpId, kp.Title);
+        // 从配置读取是否生成 TTS
+        var ttsSettings = await _settingsService.GetTtsSettingsAsync();
+        var generateTts = ttsSettings.Enabled;
+
+        _logger.LogInformation("生成学习内容: {KpId} - {Title}, TTS: {GenerateTts}", kp.KpId, kp.Title, generateTts);
 
         try
         {
@@ -53,7 +60,7 @@ public class LearningGenerator : ILearningGenerator
 
             // 2. 调用 LLM 生成学习内容
             _logger.LogDebug("调用 LLM 生成学习内容");
-            var learningPack = await GenerateLearningContentAsync(kp, snippetTexts, cancellationToken);
+            var learningPack = await GenerateLearningContentAsync(kp, snippetTexts, generateTts, cancellationToken);
 
             if (learningPack != null)
             {
@@ -121,6 +128,7 @@ public class LearningGenerator : ILearningGenerator
         private async Task<LearningPack?> GenerateLearningContentAsync(
             KnowledgePoint kp,
             string snippetTexts,
+            bool generateTts,
             CancellationToken cancellationToken)
     {
         var systemPrompt = @"你是一个专业的学习内容生成专家。你的任务是为用户生成结构化的学习内容。
@@ -264,7 +272,10 @@ public class LearningGenerator : ILearningGenerator
         };
 
         // 为每个幻灯片卡片生成口语化讲解脚本
-        await GenerateSpeechScriptsAsync(learningPack.SlideCards, kp, cancellationToken);
+        if (generateTts)
+        {
+            await GenerateSpeechScriptsAsync(learningPack.SlideCards, kp, cancellationToken);
+        }
 
         return learningPack;
     }
