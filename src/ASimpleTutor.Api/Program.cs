@@ -71,6 +71,7 @@ builder.Services.AddSingleton<IKnowledgeBuilder, KnowledgeBuilder>();
 builder.Services.AddSingleton<ILearningGenerator, LearningGenerator>();
 builder.Services.AddSingleton<IExerciseGenerator, ExerciseService>();
 builder.Services.AddSingleton<IExerciseFeedback, ExerciseService>();
+builder.Services.AddSingleton<ScanProgressService>();
 
 // 添加控制器支持
 builder.Services.AddControllers();

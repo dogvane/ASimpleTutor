@@ -11,6 +11,7 @@ export function useAppStore() {
   // 扫描状态
   const scanStatus = ref('idle')
   const scanMessage = ref('')
+  const scanProgress = ref(null)
 
   // 章节相关
   const chapters = ref([])
@@ -98,6 +99,7 @@ export function useAppStore() {
     activeBookHubId,
     scanStatus,
     scanMessage,
+    scanProgress,
     chapters,
     chaptersLoading,
     expandedIds,

@@ -1,4 +1,4 @@
-import { getBookHubs, activateBookHub, getChapters, scanBooks, searchChapters } from '../api'
+import { getBookHubs, activateBookHub, getChapters, scanBooks, searchChapters, getScanProgress } from '../api'
 
 /**
  * 章节加载逻辑
@@ -9,6 +9,7 @@ export function useChapterLoader(state) {
     activeBookHubId,
     scanStatus,
     scanMessage,
+    scanProgress,
     chapters,
     chaptersLoading,
     expandedIds,
@@ -21,6 +22,8 @@ export function useChapterLoader(state) {
     resetLearningState,
     setError,
   } = state
+
+  let progressInterval = null
 
   // 加载书籍中心列表
   const loadBookHubs = async () => {
@@ -47,6 +50,46 @@ export function useChapterLoader(state) {
     }
   }
 
+  // 轮询扫描进度
+  const startProgressPolling = () => {
+    if (progressInterval) {
+      clearInterval(progressInterval)
+    }
+
+    progressInterval = setInterval(async () => {
+      try {
+        const progress = await getScanProgress()
+        scanProgress.value = progress
+
+        // 更新扫描消息
+        if (progress.message) {
+          scanMessage.value = progress.message
+        }
+
+        // 如果扫描完成，加载章节并停止轮询
+        if (progress.status === 'completed') {
+          await completeScan()
+        }
+        // 如果扫描失败，停止轮询
+        else if (progress.status === 'failed') {
+          scanStatus.value = 'failed'
+          scanMessage.value = progress.error || '扫描失败'
+          stopProgressPolling()
+        }
+      } catch (error) {
+        console.error('获取扫描进度失败:', error)
+      }
+    }, 1000) // 每秒轮询一次
+  }
+
+  // 停止进度轮询
+  const stopProgressPolling = () => {
+    if (progressInterval) {
+      clearInterval(progressInterval)
+      progressInterval = null
+    }
+  }
+
   // 扫描并加载
   const scanAndLoad = async () => {
     if (!activeBookHubId.value) {
@@ -54,21 +97,39 @@ export function useChapterLoader(state) {
       return
     }
     scanStatus.value = 'scanning'
-    scanMessage.value = ''
+    scanMessage.value = '正在启动扫描...'
+    scanProgress.value = null
     chapters.value = []
     expandedIds.value = []
     selectedChapter.value = null
     resetLearningState()
     setError(null)
 
+    // 开始轮询进度
+    startProgressPolling()
+
     try {
       await scanBooks()
+      // 扫描请求已发送，继续轮询进度
+    } catch (error) {
+      scanStatus.value = 'failed'
+      scanMessage.value = error.message
+      setError(error)
+      stopProgressPolling()
+    }
+  }
+
+  // 完成扫描（由外部调用，当检测到扫描完成时）
+  const completeScan = async () => {
+    try {
       await loadChapters()
       scanStatus.value = 'ready'
     } catch (error) {
       scanStatus.value = 'failed'
       scanMessage.value = error.message
       setError(error)
+    } finally {
+      stopProgressPolling()
     }
   }
 
@@ -225,5 +286,6 @@ export function useChapterLoader(state) {
     setupSearch,
     findChapterById,
     nextChapter,
+    completeScan,
   }
 }

@@ -181,6 +181,7 @@ onMounted(() => {
       :book-hubs="bookHubs"
       :active-book-hub-id="activeBookHubId"
       :scan-status="scanStatus"
+      :scan-progress="scanProgress"
       :current-path="currentPath"
       :search-query="searchQuery"
       @book-change="changeBookHub"
@@ -195,26 +196,28 @@ onMounted(() => {
 
     <div class="content">
       <aside class="sidebar">
-        <div class="section-title">章节列表</div>
-        <ChapterTree
-          :chapters="chapters"
-          :expanded-ids="expandedIds"
-          :selected-id="selectedChapter?.id || ''"
-          :search-query="searchQuery"
-          :search-results="searchResults"
-          :search-active-index="searchActiveIndex"
-          @toggle="toggleExpand"
-          @select="handleSelectChapter"
-          @select-search="handleSearchSelect"
-        />
+        <div class="sidebar-content">
+          <div class="section-title">章节列表</div>
+          <ChapterTree
+            :chapters="chapters"
+            :expanded-ids="expandedIds"
+            :selected-id="selectedChapter?.id || ''"
+            :search-query="searchQuery"
+            :search-results="searchResults"
+            :search-active-index="searchActiveIndex"
+            @toggle="toggleExpand"
+            @select="handleSelectChapter"
+            @select-search="handleSearchSelect"
+          />
 
-        <div v-if="knowledgePoints.length > 0" class="section-title">知识点</div>
-        <KnowledgePointList
-          v-if="knowledgePoints.length > 0"
-          :knowledge-points="knowledgePoints"
-          :selected-kp-id="selectedKp?.id || ''"
-          @select="selectKp"
-        />
+          <div v-if="knowledgePoints.length > 0" class="section-title">知识点</div>
+          <KnowledgePointList
+            v-if="knowledgePoints.length > 0"
+            :knowledge-points="knowledgePoints"
+            :selected-kp-id="selectedKp?.id || ''"
+            @select="selectKp"
+          />
+        </div>
       </aside>
 
       <main class="main">

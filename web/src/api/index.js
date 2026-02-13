@@ -8,6 +8,7 @@ export const activateBookHub = (bookHubId) =>
   })
 
 export const scanBooks = () => apiFetch('/books/scan', { method: 'POST' })
+export const getScanProgress = () => apiFetch('/books/scan-progress')
 
 export const getChapters = () => apiFetch('/chapters')
 export const searchChapters = (q, limit = 20) =>

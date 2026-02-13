@@ -65,10 +65,10 @@ public class BooksController : ControllerBase
     }
 
     /// <summary>
-    /// 触发扫描
+    /// 触发扫描（后台异步执行）
     /// </summary>
     [HttpPost("scan")]
-    public async Task<IActionResult> TriggerScan([FromServices] IServiceProvider serviceProvider)
+    public IActionResult TriggerScan([FromServices] IServiceProvider serviceProvider)
     {
         if (string.IsNullOrEmpty(_config.ActiveBookHubId))
         {
@@ -86,39 +86,65 @@ public class BooksController : ControllerBase
             return BadRequest(new { error = new { code = "BAD_REQUEST", message = $"目录不存在: {bookHub.Path}" } });
         }
 
-        _logger.LogInformation("开始构建知识体系: {BookHubId}", _config.ActiveBookHubId);
+        var progressService = serviceProvider.GetRequiredService<ScanProgressService>();
 
-        try
+        // 检查是否已有正在进行的扫描任务
+        var existingProgress = progressService.GetProgress(_config.ActiveBookHubId);
+        if (existingProgress != null && existingProgress.Status == "scanning")
         {
-            var knowledgeBuilder = serviceProvider.GetRequiredService<IKnowledgeBuilder>();
-            var store = serviceProvider.GetRequiredService<KnowledgeSystemStore>();
-
-            var (knowledgeSystem, documents) = await knowledgeBuilder.BuildAsync(
-                _config.ActiveBookHubId,
-                bookHub.Path);
-
-            // 保存到持久化存储
-            await store.SaveAsync(knowledgeSystem, documents);
-
-            AdminController.SetKnowledgeSystem(knowledgeSystem);
-            KnowledgePointsController.SetKnowledgeSystem(knowledgeSystem);
-            ChaptersController.SetKnowledgeSystem(knowledgeSystem);
-            ExercisesController.SetKnowledgeSystem(knowledgeSystem);
-
-            _logger.LogInformation("知识体系构建完成，共 {Count} 个知识点，已保存到本地",
-                knowledgeSystem.KnowledgePoints.Count);
-
-            return Ok(new { success = true, taskId = Guid.NewGuid().ToString(), status = "completed" });
+            return Ok(new
+            {
+                success = true,
+                taskId = existingProgress.TaskId,
+                status = "scanning",
+                message = "扫描任务已在进行中"
+            });
         }
-        catch (Exception ex)
+
+        var taskId = Guid.NewGuid().ToString();
+        _logger.LogInformation("启动后台扫描任务: {TaskId}, BookHubId: {BookHubId}", taskId, _config.ActiveBookHubId);
+
+        // 启动后台任务
+        _ = Task.Run(async () =>
         {
-            _logger.LogError(ex, "知识体系构建失败");
-            // 生产环境不返回详细错误信息
-            var errorMessage = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development"
-                ? "知识体系构建失败: " + ex.Message
-                : "知识体系构建失败，请稍后重试";
-            return Problem(new { error = new { code = "SCAN_FAILED", message = errorMessage } }.ToString());
-        }
+            try
+            {
+                using var scope = serviceProvider.CreateScope();
+                var scopedProvider = scope.ServiceProvider;
+                var knowledgeBuilder = scopedProvider.GetRequiredService<IKnowledgeBuilder>();
+                var store = scopedProvider.GetRequiredService<KnowledgeSystemStore>();
+                var progress = scopedProvider.GetRequiredService<ScanProgressService>();
+                var logger = scopedProvider.GetRequiredService<ILogger<BooksController>>();
+
+                var (knowledgeSystem, documents) = await knowledgeBuilder.BuildAsync(
+                    _config.ActiveBookHubId,
+                    bookHub.Path);
+
+                // 保存到持久化存储
+                await store.SaveAsync(knowledgeSystem, documents);
+
+                // 更新内存中的知识系统
+                AdminController.SetKnowledgeSystem(knowledgeSystem);
+                KnowledgePointsController.SetKnowledgeSystem(knowledgeSystem);
+                ChaptersController.SetKnowledgeSystem(knowledgeSystem);
+                ExercisesController.SetKnowledgeSystem(knowledgeSystem);
+
+                logger.LogInformation("后台扫描任务完成: {TaskId}, 共 {Count} 个知识点",
+                    taskId, knowledgeSystem.KnowledgePoints.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "后台扫描任务失败: {TaskId}", taskId);
+            }
+        });
+
+        return Ok(new
+        {
+            success = true,
+            taskId = taskId,
+            status = "scanning",
+            message = "扫描任务已启动"
+        });
     }
 
     /// <summary>
@@ -148,6 +174,45 @@ public class BooksController : ControllerBase
         }
 
         return Ok(new { success = false, message = "无缓存可清除" });
+    }
+
+    /// <summary>
+    /// 获取扫描进度
+    /// </summary>
+    [HttpGet("scan-progress")]
+    public IActionResult GetScanProgress([FromServices] ScanProgressService progressService)
+    {
+        if (string.IsNullOrEmpty(_config.ActiveBookHubId))
+        {
+            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "请先激活书籍中心" } });
+        }
+
+        var progress = progressService.GetProgress(_config.ActiveBookHubId);
+        if (progress == null)
+        {
+            return Ok(new
+            {
+                taskId = (string?)null,
+                status = "idle",
+                currentStage = "",
+                progressPercent = 0,
+                message = "无进行中的扫描任务",
+                processedKpCount = 0,
+                totalKpCount = 0
+            });
+        }
+
+        return Ok(new
+        {
+            taskId = progress.TaskId,
+            status = progress.Status,
+            currentStage = progress.CurrentStage,
+            progressPercent = progress.ProgressPercent,
+            message = progress.Message,
+            processedKpCount = progress.ProcessedKpCount,
+            totalKpCount = progress.TotalKpCount,
+            error = progress.Error
+        });
     }
 }
 

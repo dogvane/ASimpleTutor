@@ -22,6 +22,7 @@
       </div>
       <RefreshDropdown
         :scan-status="scanStatus"
+        :scan-progress="scanProgress"
         @refresh="$emit('refresh', $event)"
       />
       <div class="search">
@@ -52,6 +53,10 @@ defineProps({
   scanStatus: {
     type: String,
     default: 'idle',
+  },
+  scanProgress: {
+    type: Object,
+    default: null,
   },
   currentPath: {
     type: String,

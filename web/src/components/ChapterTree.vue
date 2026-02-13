@@ -63,8 +63,6 @@ export default {
 <style scoped>
 .chapter-tree {
   padding: 16px;
-  height: 100%;
-  overflow: auto;
 }
 
 .tree,

@@ -18,6 +18,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
     private readonly ITtsService _ttsService;
     private readonly ILearningGenerator _learningGenerator;
     private readonly KnowledgeSystemStore _store;
+    private readonly ScanProgressService _progressService;
     private readonly ILogger<KnowledgeBuilder> _logger;
 
     public KnowledgeBuilder(
@@ -26,6 +27,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         ITtsService ttsService,
         ILearningGenerator learningGenerator,
         KnowledgeSystemStore store,
+        ScanProgressService progressService,
         ILogger<KnowledgeBuilder> logger)
     {
         _scannerService = scannerService;
@@ -33,12 +35,16 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         _ttsService = ttsService;
         _learningGenerator = learningGenerator;
         _store = store;
+        _progressService = progressService;
         _logger = logger;
     }
 
     public async Task<(KnowledgeSystem KnowledgeSystem, List<Document> Documents)> BuildAsync(string bookHubId, string rootPath, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("开始构建知识体系: {BookHubId}", bookHubId);
+
+        // 开始扫描进度跟踪
+        _progressService.StartScan(bookHubId);
 
         var knowledgeSystem = new KnowledgeSystem
         {
@@ -50,52 +56,65 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         try
         {
             // 1. 扫描文档
+            _progressService.UpdateProgress(bookHubId, "扫描文档", 5, "正在扫描文档目录...");
             _logger.LogInformation("扫描文档目录: {RootPath}", rootPath);
             documents = await _scannerService.ScanAsync(rootPath, cancellationToken);
 
             if (documents.Count == 0)
             {
                 _logger.LogWarning("未找到任何 Markdown 文档");
+                _progressService.CompleteScan(bookHubId, 0);
                 return (knowledgeSystem, documents);
             }
 
             // 过程保存：扫描完成后保存文档信息
+            _progressService.UpdateProgress(bookHubId, "扫描文档", 10, $"扫描完成，发现 {documents.Count} 个文档");
             await SaveProgressAsync(knowledgeSystem, documents, "扫描完成", cancellationToken);
 
             // 2. 调用 LLM 提取知识点
+            _progressService.UpdateProgress(bookHubId, "提取知识点", 20, "正在调用 LLM 提取知识点...");
             _logger.LogInformation("调用 LLM 提取知识点");
             var knowledgePoints = await ExtractKnowledgePointsAsync(documents, cancellationToken);
             knowledgeSystem.KnowledgePoints = knowledgePoints;
 
             // 过程保存：知识点提取完成后保存
+            _progressService.UpdateProgress(bookHubId, "提取知识点", 40, $"知识点提取完成，共 {knowledgePoints.Count} 个知识点");
             await SaveProgressAsync(knowledgeSystem, documents, "知识点提取完成", cancellationToken);
 
             // 3. 为每个知识点预生成学习内容
+            _progressService.UpdateProgress(bookHubId, "生成学习内容", 50, "正在为知识点生成学习内容...");
             _logger.LogInformation("为知识点预生成学习内容");
-            await GenerateLearningContentForPointsAsync(knowledgePoints, documents, cancellationToken);
+            await GenerateLearningContentForPointsAsync(knowledgePoints, documents, bookHubId, cancellationToken);
 
             // 过程保存：学习内容生成完成后保存
+            _progressService.UpdateProgress(bookHubId, "生成学习内容", 70, "学习内容生成完成");
             await SaveProgressAsync(knowledgeSystem, documents, "学习内容生成完成", cancellationToken);
 
             // 4. 为幻灯片卡片生成 TTS 音频
+            _progressService.UpdateProgress(bookHubId, "生成音频", 80, "正在为幻灯片生成 TTS 音频...");
             _logger.LogInformation("为幻灯片卡片生成 TTS 音频");
-            await GenerateTtsForSlideCardsAsync(knowledgePoints, cancellationToken);
+            await GenerateTtsForSlideCardsAsync(knowledgePoints, bookHubId, cancellationToken);
 
             // 过程保存：TTS 生成完成后保存
+            _progressService.UpdateProgress(bookHubId, "生成音频", 90, "TTS 音频生成完成");
             await SaveProgressAsync(knowledgeSystem, documents, "TTS 生成完成", cancellationToken);
 
             // 5. 构建知识树
+            _progressService.UpdateProgress(bookHubId, "构建知识树", 95, "正在构建知识树...");
             _logger.LogInformation("构建知识树");
             knowledgeSystem.Tree = BuildKnowledgeTree(knowledgePoints);
 
             // 最终保存：构建完成
             await SaveProgressAsync(knowledgeSystem, documents, "构建完成", cancellationToken);
 
+            // 标记扫描完成
+            _progressService.CompleteScan(bookHubId, knowledgePoints.Count);
             _logger.LogInformation("知识体系构建完成，共 {Count} 个知识点", knowledgePoints.Count);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "知识体系构建失败");
+            _progressService.FailScan(bookHubId, ex.Message);
             // 尝试保存已完成的进度
             await SaveProgressAsync(knowledgeSystem, documents, "构建失败-保存进度", cancellationToken);
             // 降级：返回按文件/标题的目录树
@@ -310,12 +329,16 @@ public class KnowledgeBuilder : IKnowledgeBuilder
     private async Task GenerateLearningContentForPointsAsync(
         List<KnowledgePoint> knowledgePoints,
         List<Document> documents,
+        string bookHubId,
         CancellationToken cancellationToken)
     {
         _logger.LogInformation("开始为 {Count} 个知识点生成学习内容", knowledgePoints.Count);
 
+        var processedCount = 0;
+        var totalCount = knowledgePoints.Count;
+
         // 使用 Parallel.ForEachAsync 并发处理所有知识点
-        await Parallel.ForEachAsync(knowledgePoints, new ParallelOptions { CancellationToken = cancellationToken },
+        await Parallel.ForEachAsync(knowledgePoints, new ParallelOptions { CancellationToken = cancellationToken, MaxDegreeOfParallelism = 3 },
             async (kp, cancellationToken) =>
             {
                 try
@@ -340,6 +363,14 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                         kp.Summary = learningPack.Summary;
                         kp.Levels = learningPack.Levels;
                         kp.SlideCards = learningPack.SlideCards;
+                    }
+
+                    // 更新进度
+                    var current = Interlocked.Increment(ref processedCount);
+                    if (current % 5 == 0 || current == totalCount) // 每5个更新一次进度
+                    {
+                        var percent = 50 + (current * 20 / totalCount); // 50-70% 区间
+                        _progressService.UpdateProgress(bookHubId, "生成学习内容", percent, $"正在生成学习内容 ({current}/{totalCount})...", current, totalCount);
                     }
                 }
                 catch (Exception ex)
@@ -654,6 +685,7 @@ public class KnowledgeBuilder : IKnowledgeBuilder
     /// </summary>
     private async Task GenerateTtsForSlideCardsAsync(
         List<KnowledgePoint> knowledgePoints,
+        string bookHubId,
         CancellationToken cancellationToken)
     {
         var allSlideCards = knowledgePoints
@@ -692,6 +724,8 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         var failedCount = 0;
         var cachedCount = 0;
         var emptyCount = 0;
+        var processedCount = 0;
+        var totalCount = slideCardsWithScript.Count;
 
         await Parallel.ForEachAsync(slideCardsWithScript,
             new ParallelOptions { CancellationToken = cancellationToken, MaxDegreeOfParallelism = 3 },
@@ -711,21 +745,30 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                         // 注意：这里无法直接访问 WebRootPath，跳过文件存在性检查
                         // 音频文件缺失的情况会在 API 层处理时重新生成
                         cachedCount++;
-                        return;
-                    }
-
-                    // 生成音频
-                    var audioUrl = await _ttsService.GetAudioUrlAsync(slideCard.SpeechScript!, cancellationToken);
-                    if (!string.IsNullOrEmpty(audioUrl))
-                    {
-                        slideCard.AudioUrl = audioUrl;
-                        Interlocked.Increment(ref completedCount);
-                        _logger.LogDebug("TTS 生成成功: {SlideId}", slideCard.SlideId);
                     }
                     else
                     {
-                        Interlocked.Increment(ref failedCount);
-                        _logger.LogWarning("TTS 生成返回空: {SlideId}", slideCard.SlideId);
+                        // 生成音频
+                        var audioUrl = await _ttsService.GetAudioUrlAsync(slideCard.SpeechScript!, cancellationToken);
+                        if (!string.IsNullOrEmpty(audioUrl))
+                        {
+                            slideCard.AudioUrl = audioUrl;
+                            Interlocked.Increment(ref completedCount);
+                            _logger.LogDebug("TTS 生成成功: {SlideId}", slideCard.SlideId);
+                        }
+                        else
+                        {
+                            Interlocked.Increment(ref failedCount);
+                            _logger.LogWarning("TTS 生成返回空: {SlideId}", slideCard.SlideId);
+                        }
+                    }
+
+                    // 更新进度
+                    var current = Interlocked.Increment(ref processedCount);
+                    if (current % 10 == 0 || current == totalCount) // 每10个更新一次进度
+                    {
+                        var percent = 80 + (current * 10 / totalCount); // 80-90% 区间
+                        _progressService.UpdateProgress(bookHubId, "生成音频", percent, $"正在生成音频 ({current}/{totalCount})...", current, totalCount);
                     }
                 }
                 catch (Exception ex)

@@ -6,9 +6,19 @@
       @click="toggleDropdown"
       :disabled="scanStatus === 'scanning'"
     >
-      <span>{{ label }}</span>
+      <span v-if="scanStatus === 'scanning' && scanProgress">
+        {{ scanProgress.currentStage }} {{ scanProgress.progressPercent }}%
+      </span>
+      <span v-else>{{ label }}</span>
       <span class="arrow">{{ open ? '▾' : '▸' }}</span>
     </button>
+    <!-- 扫描进度条 -->
+    <div v-if="scanStatus === 'scanning' && scanProgress" class="scan-progress-bar">
+      <div class="progress-track">
+        <div class="progress-fill" :style="{ width: scanProgress.progressPercent + '%' }"></div>
+      </div>
+      <div class="progress-message">{{ scanProgress.message }}</div>
+    </div>
     <div v-if="open" class="dropdown-menu">
       <div class="dropdown-item" @click="onItemClick('scan')">
         <span class="icon">🔄</span>
@@ -37,6 +47,10 @@ const props = defineProps({
   scanStatus: {
     type: String,
     default: 'idle',
+  },
+  scanProgress: {
+    type: Object,
+    default: null,
   },
 })
 
@@ -136,5 +150,45 @@ onUnmounted(() => {
 
 .dropdown-item .icon {
   font-size: 16px;
+}
+
+/* 扫描进度条样式 */
+.scan-progress-bar {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: #fff;
+  border: 1px solid #edf0f5;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  min-width: 280px;
+}
+
+.progress-track {
+  width: 100%;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3772ff, #5c9dff);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-message {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
