@@ -22,10 +22,11 @@ export const getOverview = (kpId) =>
 export const getSourceContent = (kpId) =>
   apiFetch(`/knowledge-points/source-content?kpId=${encodeURIComponent(kpId)}`)
 
-export const getDetailedContent = (kpId, level = 'brief') =>
-  apiFetch(
-    `/knowledge-points/detailed-content?kpId=${encodeURIComponent(kpId)}&level=${encodeURIComponent(level)}`,
-  )
+export const getDetailedContent = (kpId, level = null) => {
+  const baseUrl = `/knowledge-points/detailed-content?kpId=${encodeURIComponent(kpId)}`
+  const url = level ? `${baseUrl}&level=${encodeURIComponent(level)}` : baseUrl
+  return apiFetch(url)
+}
 
 export const getSlideCards = (kpId) =>
   apiFetch(`/knowledge-points/slide-cards?kpId=${encodeURIComponent(kpId)}`)

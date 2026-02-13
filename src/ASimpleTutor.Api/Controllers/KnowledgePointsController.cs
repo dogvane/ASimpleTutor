@@ -164,21 +164,44 @@ public class KnowledgePointsController : ControllerBase
         if (validationResult != null) return validationResult;
 
         var levels = kp.Levels ?? new List<ContentLevel>();
-        var briefLevel = levels.FirstOrDefault(l => l.Level == 1);
-        var detailedLevel = levels.FirstOrDefault(l => l.Level == 2);
-        var deepLevel = levels.FirstOrDefault(l => l.Level == 3);
+        var responseLevels = new Dictionary<string, object>();
 
-        return Ok(new
+        // 如果 level 为空，返回所有层次
+        if (string.IsNullOrEmpty(level))
         {
-            id = kp.KpId,
-            title = kp.Title,
-            levels = new
-            {
-                brief = new { content = briefLevel?.Content ?? "", keyPoints = kp.Summary?.KeyPoints ?? new List<string>() },
-                detailed = new { content = detailedLevel?.Content ?? "", examples = new List<string>() },
-                deep = new { content = deepLevel?.Content ?? "", relatedPatterns = new List<string>(), bestPractices = new List<string>() }
-            }
-        });
+            var briefLevel = levels.FirstOrDefault(l => l.Level == 1);
+            var detailedLevel = levels.FirstOrDefault(l => l.Level == 2);
+            var deepLevel = levels.FirstOrDefault(l => l.Level == 3);
+
+            responseLevels["brief"] = new { content = briefLevel?.Content ?? "", keyPoints = kp.Summary?.KeyPoints ?? new List<string>() };
+            responseLevels["detailed"] = new { content = detailedLevel?.Content ?? "", examples = new List<string>() };
+            responseLevels["deep"] = new { content = deepLevel?.Content ?? "", relatedPatterns = new List<string>(), bestPractices = new List<string>() };
+        }
+        // 只返回概览层次
+        else if (level == "brief")
+        {
+            var briefLevel = levels.FirstOrDefault(l => l.Level == 1);
+            responseLevels["brief"] = new { content = briefLevel?.Content ?? "", keyPoints = kp.Summary?.KeyPoints ?? new List<string>() };
+        }
+        // 只返回详细层次
+        else if (level == "detailed")
+        {
+            var detailedLevel = levels.FirstOrDefault(l => l.Level == 2);
+            responseLevels["detailed"] = new { content = detailedLevel?.Content ?? "", examples = new List<string>() };
+        }
+        // 只返回深度层次
+        else if (level == "deep")
+        {
+            var deepLevel = levels.FirstOrDefault(l => l.Level == 3);
+            responseLevels["deep"] = new { content = deepLevel?.Content ?? "", relatedPatterns = new List<string>(), bestPractices = new List<string>() };
+        }
+        // 无效的 level 参数
+        else
+        {
+            return BadRequest(new { error = new { code = "BAD_REQUEST", message = $"无效的 level 参数: {level}。有效值为: brief, detailed, deep" } });
+        }
+
+        return Ok(new { id = kp.KpId, title = kp.Title, levels = responseLevels });
     }
 
     /// <summary>

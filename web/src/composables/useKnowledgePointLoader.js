@@ -158,9 +158,9 @@ export function useKnowledgePointLoader(state) {
             sources: []
           })
 
-          // 详细内容
+          // 详细内容 - 获取所有层次（brief, detailed, deep）
           try {
-            const detailedContent = await getDetailedContent(kpId, 'detailed')
+            const detailedContent = await getDetailedContent(kpId)
             if (detailedContent?.levels) {
               if (detailedContent.levels.brief?.content) {
                 slideItems.push({
