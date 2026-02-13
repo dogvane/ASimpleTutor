@@ -39,6 +39,11 @@ const {
   settingsDialogOpen,
   currentPath,
   hasNextChapter,
+  exercisesStatus,
+  exercisesDrawerOpen,
+  exercises,
+  exercisesAnswers,
+  exercisesFeedback,
   setError,
 } = state
 
