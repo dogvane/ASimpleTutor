@@ -48,6 +48,19 @@
 - 分层：Controller/Endpoint 只编排；核心逻辑进 service；外部依赖（LLM/文件/索引）抽接口
 - JSON：DTO 优先英文属性；必要时用 `[JsonPropertyName("...")]`；对外返回可加 `schemaVersion`
 - 日志：`ILogger<T>` 结构化日志；不要记录密钥/敏感原文；LLM 仅记录耗时/摘要
+- 业务并发：使用了 `ILLMService` 接口的业务，在调用该接口的方法，如果需要循环调用，可以使用 `Parallel.ForEach` 的方式进行并发
+
+### 资源安全
+
+- 共享资源访问：使用 `lock` 或 `Monitor` 进行同步，避免死锁
+- 线程安全设计：优先使用不可变对象和线程安全集合
+- 内存管理：注意避免闭包陷阱和内存泄漏（如未取消的任务）
+
+### 错误处理
+
+- 异步异常：使用 `try-catch` 包裹 `await` 调用，避免 `AggregateException`
+- 容错机制：并发任务失败时，记录详细日志并提供降级方案
+- 批量任务：使用 `WhenAll` 时，考虑单个任务失败对整体的影响
 
 ## API URL 设计原则
 

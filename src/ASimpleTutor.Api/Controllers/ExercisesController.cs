@@ -24,15 +24,10 @@ public class ExercisesController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// 检查习题状态
-    /// </summary>
-    [HttpGet("knowledge-points/exercises/status")]
-    public async Task<IActionResult> GetExerciseStatus(
-        [FromQuery] string kpId,
-        [FromServices] IServiceProvider serviceProvider,
-        [FromServices] ILogger<ExercisesController> logger)
+    private IActionResult? ValidateRequest(string kpId, out KnowledgePoint? kp)
     {
+        kp = null;
+        
         if (_knowledgeSystem == null)
         {
             return NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
@@ -43,11 +38,31 @@ public class ExercisesController : ControllerBase
             return BadRequest(new { error = new { code = "BAD_REQUEST", message = "kpId 不能为空" } });
         }
 
-        var kp = _knowledgeSystem.KnowledgePoints.FirstOrDefault(p => p.KpId == kpId);
+        kp = _knowledgeSystem.KnowledgePoints.FirstOrDefault(p => p.KpId == kpId);
         if (kp == null)
         {
             return NotFound(new { error = new { code = "KP_NOT_FOUND", message = $"知识点不存在: {kpId}" } });
         }
+
+        return null;
+    }
+
+    private IActionResult? ValidateRequest(string kpId)
+    {
+        return ValidateRequest(kpId, out _);
+    }
+
+    /// <summary>
+    /// 检查习题状态
+    /// </summary>
+    [HttpGet("knowledge-points/exercises/status")]
+    public async Task<IActionResult> GetExerciseStatus(
+        [FromQuery] string kpId,
+        [FromServices] IServiceProvider serviceProvider,
+        [FromServices] ILogger<ExercisesController> logger)
+    {
+        var validationResult = ValidateRequest(kpId, out var kp);
+        if (validationResult != null) return validationResult;
 
         lock (_lock)
         {
@@ -55,14 +70,7 @@ public class ExercisesController : ControllerBase
 
             if (exercisesForKp.Count > 0)
             {
-                return Ok(new
-                {
-                    kpId,
-                    hasExercises = true,
-                    exerciseCount = exercisesForKp.Count,
-                    status = "ready",
-                    generatedAt = DateTime.UtcNow
-                });
+                return Ok(new { kpId, hasExercises = true, exerciseCount = exercisesForKp.Count, status = "ready", generatedAt = DateTime.UtcNow });
             }
         }
 
@@ -79,25 +87,12 @@ public class ExercisesController : ControllerBase
                 }
             }
 
-            return Ok(new
-            {
-                kpId,
-                hasExercises = true,
-                exerciseCount = exercises.Count,
-                status = "ready",
-                generatedAt = DateTime.UtcNow
-            });
+            return Ok(new { kpId, hasExercises = true, exerciseCount = exercises.Count, status = "ready", generatedAt = DateTime.UtcNow });
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "生成习题失败: {KpId}", kpId);
-            return Ok(new
-            {
-                kpId,
-                hasExercises = false,
-                status = "generating",
-                message = "习题生成中..."
-            });
+            return Ok(new { kpId, hasExercises = false, status = "generating", message = "习题生成中..." });
         }
     }
 
@@ -107,21 +102,8 @@ public class ExercisesController : ControllerBase
     [HttpGet("knowledge-points/exercises")]
     public IActionResult GetExercises([FromQuery] string kpId)
     {
-        if (_knowledgeSystem == null)
-        {
-            return NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
-        }
-
-        if (string.IsNullOrEmpty(kpId))
-        {
-            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "kpId 不能为空" } });
-        }
-
-        var kp = _knowledgeSystem.KnowledgePoints.FirstOrDefault(p => p.KpId == kpId);
-        if (kp == null)
-        {
-            return NotFound(new { error = new { code = "KP_NOT_FOUND", message = $"知识点不存在: {kpId}" } });
-        }
+        var validationResult = ValidateRequest(kpId, out var kp);
+        if (validationResult != null) return validationResult;
 
         List<Exercise> exercises;
         lock (_lock)
@@ -134,15 +116,7 @@ public class ExercisesController : ControllerBase
             return Ok(new { kpId, items = new List<object>() });
         }
 
-        var items = exercises.Select(e => new
-        {
-            id = e.ExerciseId,
-            type = e.Type.ToString().ToLower(),
-            question = e.Question,
-            options = e.Options,
-            answer = string.Empty
-        }).ToList();
-
+        var items = exercises.Select(e => new { id = e.ExerciseId, type = e.Type.ToString().ToLower(), question = e.Question, options = e.Options, answer = string.Empty }).ToList();
         return Ok(new { kpId, items });
     }
 
@@ -173,14 +147,7 @@ public class ExercisesController : ControllerBase
         {
             var feedback = serviceProvider.GetRequiredService<IExerciseFeedback>();
             var result = await feedback.JudgeAsync(exercise, request.Answer);
-
-            return Ok(new
-            {
-                exerciseId = exercise.ExerciseId,
-                correct = result.IsCorrect,
-                explanation = result.Explanation,
-                referenceAnswer = result.ReferenceAnswer
-            });
+            return Ok(new { exerciseId = exercise.ExerciseId, correct = result.IsCorrect, explanation = result.Explanation, referenceAnswer = result.ReferenceAnswer });
         }
         catch (Exception ex)
         {
@@ -238,14 +205,7 @@ public class ExercisesController : ControllerBase
                 }
             });
 
-            return Ok(new
-            {
-                message = "习题刷新完成",
-                knowledgePointCount = knowledgePointCount,
-                totalExerciseCount = totalExercises,
-                status = "ready",
-                generatedAt = DateTime.UtcNow
-            });
+            return Ok(new { message = "习题刷新完成", knowledgePointCount, totalExerciseCount = totalExercises, status = "ready", generatedAt = DateTime.UtcNow });
         }
         catch (Exception ex)
         {
@@ -293,13 +253,7 @@ public class ExercisesController : ControllerBase
 
             if (exercise == null)
             {
-                results.Add(new
-                {
-                    exerciseId = answer.ExerciseId,
-                    correct = false,
-                    explanation = "习题不存在",
-                    referenceAnswer = ""
-                });
+                results.Add(new { exerciseId = answer.ExerciseId, correct = false, explanation = "习题不存在", referenceAnswer = "" });
                 incorrect++;
                 continue;
             }
@@ -308,39 +262,19 @@ public class ExercisesController : ControllerBase
             {
                 var result = await feedbackService.JudgeAsync(exercise, answer.Answer);
                 var isCorrect = result.IsCorrect ?? false;
-                results.Add(new
-                {
-                    exerciseId = exercise.ExerciseId,
-                    correct = isCorrect,
-                    explanation = result.Explanation,
-                    referenceAnswer = result.ReferenceAnswer
-                });
+                results.Add(new { exerciseId = exercise.ExerciseId, correct = isCorrect, explanation = result.Explanation, referenceAnswer = result.ReferenceAnswer });
 
-                if (isCorrect)
-                    correct++;
-                else
-                    incorrect++;
+                if (isCorrect) correct++; else incorrect++;
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "评判答案失败: {ExerciseId}", answer.ExerciseId);
-                results.Add(new
-                {
-                    exerciseId = answer.ExerciseId,
-                    correct = false,
-                    explanation = "评判失败",
-                    referenceAnswer = ""
-                });
+                results.Add(new { exerciseId = answer.ExerciseId, correct = false, explanation = "评判失败", referenceAnswer = "" });
                 incorrect++;
             }
         }
 
-        return Ok(new
-        {
-            kpId = request.KpId,
-            summary = new { total = request.Answers.Count, correct, incorrect },
-            items = results
-        });
+        return Ok(new { kpId = request.KpId, summary = new { total = request.Answers.Count, correct, incorrect }, items = results });
     }
 }
 
