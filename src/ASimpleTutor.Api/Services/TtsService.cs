@@ -1,5 +1,4 @@
 using ASimpleTutor.Api.Configuration;
-using ASimpleTutor.Api.Interfaces;
 using ASimpleTutor.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using OpenAI;

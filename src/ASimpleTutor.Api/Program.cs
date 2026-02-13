@@ -1,6 +1,5 @@
 using ASimpleTutor.Api.Configuration;
 using ASimpleTutor.Api.Controllers;
-using ASimpleTutor.Api.Interfaces;
 using ASimpleTutor.Api.Logging;
 using ASimpleTutor.Api.Middleware;
 using ASimpleTutor.Api.Services;

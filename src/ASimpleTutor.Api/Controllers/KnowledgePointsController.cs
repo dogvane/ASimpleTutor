@@ -1,5 +1,4 @@
 using ASimpleTutor.Api.Configuration;
-using ASimpleTutor.Api.Interfaces;
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
 using ASimpleTutor.Core.Models.Dto;

@@ -15,15 +15,24 @@ public class KnowledgeBuilder : IKnowledgeBuilder
 {
     private readonly IScannerService _scannerService;
     private readonly ILLMService _llmService;
+    private readonly ITtsService _ttsService;
+    private readonly ILearningGenerator _learningGenerator;
+    private readonly KnowledgeSystemStore _store;
     private readonly ILogger<KnowledgeBuilder> _logger;
 
     public KnowledgeBuilder(
         IScannerService scannerService,
         ILLMService llmService,
+        ITtsService ttsService,
+        ILearningGenerator learningGenerator,
+        KnowledgeSystemStore store,
         ILogger<KnowledgeBuilder> logger)
     {
         _scannerService = scannerService;
         _llmService = llmService;
+        _ttsService = ttsService;
+        _learningGenerator = learningGenerator;
+        _store = store;
         _logger = logger;
     }
 
@@ -50,30 +59,68 @@ public class KnowledgeBuilder : IKnowledgeBuilder
                 return (knowledgeSystem, documents);
             }
 
+            // 过程保存：扫描完成后保存文档信息
+            await SaveProgressAsync(knowledgeSystem, documents, "扫描完成", cancellationToken);
+
             // 2. 调用 LLM 提取知识点
             _logger.LogInformation("调用 LLM 提取知识点");
             var knowledgePoints = await ExtractKnowledgePointsAsync(documents, cancellationToken);
             knowledgeSystem.KnowledgePoints = knowledgePoints;
 
-            // 4. 为每个知识点预生成学习内容
+            // 过程保存：知识点提取完成后保存
+            await SaveProgressAsync(knowledgeSystem, documents, "知识点提取完成", cancellationToken);
+
+            // 3. 为每个知识点预生成学习内容
             _logger.LogInformation("为知识点预生成学习内容");
             await GenerateLearningContentForPointsAsync(knowledgePoints, documents, cancellationToken);
 
+            // 过程保存：学习内容生成完成后保存
+            await SaveProgressAsync(knowledgeSystem, documents, "学习内容生成完成", cancellationToken);
 
-            // 6. 构建知识树
+            // 4. 为幻灯片卡片生成 TTS 音频
+            _logger.LogInformation("为幻灯片卡片生成 TTS 音频");
+            await GenerateTtsForSlideCardsAsync(knowledgePoints, cancellationToken);
+
+            // 过程保存：TTS 生成完成后保存
+            await SaveProgressAsync(knowledgeSystem, documents, "TTS 生成完成", cancellationToken);
+
+            // 5. 构建知识树
             _logger.LogInformation("构建知识树");
             knowledgeSystem.Tree = BuildKnowledgeTree(knowledgePoints);
+
+            // 最终保存：构建完成
+            await SaveProgressAsync(knowledgeSystem, documents, "构建完成", cancellationToken);
 
             _logger.LogInformation("知识体系构建完成，共 {Count} 个知识点", knowledgePoints.Count);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "知识体系构建失败");
+            // 尝试保存已完成的进度
+            await SaveProgressAsync(knowledgeSystem, documents, "构建失败-保存进度", cancellationToken);
             // 降级：返回按文件/标题的目录树
             knowledgeSystem = CreateFallbackKnowledgeSystem(bookHubId, documents);
         }
 
         return (knowledgeSystem, documents);
+    }
+
+    /// <summary>
+    /// 保存构建进度
+    /// </summary>
+    private async Task SaveProgressAsync(KnowledgeSystem knowledgeSystem, List<Document> documents, string stage, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _store.SaveAsync(knowledgeSystem, documents, cancellationToken);
+            _logger.LogInformation("过程保存完成 [{Stage}]: {BookHubId}, 知识点: {KpCount}", 
+                stage, knowledgeSystem.BookHubId, knowledgeSystem.KnowledgePoints.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "过程保存失败 [{Stage}]: {BookHubId}", stage, knowledgeSystem.BookHubId);
+            // 过程保存失败不影响主流程
+        }
     }
 
     private async Task<List<KnowledgePoint>> ExtractKnowledgePointsAsync(
@@ -600,5 +647,95 @@ public class KnowledgeBuilder : IKnowledgeBuilder
         knowledgeSystem.Tree = BuildKnowledgeTree(knowledgeSystem.KnowledgePoints);
 
         return knowledgeSystem;
+    }
+
+    /// <summary>
+    /// 为所有知识点的幻灯片卡片生成 TTS 音频
+    /// </summary>
+    private async Task GenerateTtsForSlideCardsAsync(
+        List<KnowledgePoint> knowledgePoints,
+        CancellationToken cancellationToken)
+    {
+        var allSlideCards = knowledgePoints
+            .SelectMany(kp => kp.SlideCards)
+            .ToList();
+
+        if (allSlideCards.Count == 0)
+        {
+            _logger.LogInformation("没有需要生成 TTS 的幻灯片卡片");
+            return;
+        }
+
+        // 1. 检查并补全缺失的 SpeechScript
+        var needsUpdateSpeechScript = allSlideCards.Any(sc => string.IsNullOrEmpty(sc.SpeechScript));
+        if (needsUpdateSpeechScript)
+        {
+            _logger.LogInformation("检测到 {Count} 个幻灯片卡片缺少 SpeechScript，开始补全", 
+                allSlideCards.Count(sc => string.IsNullOrEmpty(sc.SpeechScript)));
+            await _learningGenerator.UpdateSpeechScriptsAsync(allSlideCards, cancellationToken);
+        }
+
+        // 2. 过滤出有 SpeechScript 的卡片进行 TTS 生成
+        var slideCardsWithScript = allSlideCards
+            .Where(sc => !string.IsNullOrWhiteSpace(sc.SpeechScript))
+            .ToList();
+
+        if (slideCardsWithScript.Count == 0)
+        {
+            _logger.LogInformation("没有需要生成 TTS 的幻灯片卡片（无 SpeechScript）");
+            return;
+        }
+
+        _logger.LogInformation("开始为 {Count} 个幻灯片卡片生成 TTS 音频", slideCardsWithScript.Count);
+
+        var completedCount = 0;
+        var failedCount = 0;
+        var cachedCount = 0;
+        var emptyCount = 0;
+
+        await Parallel.ForEachAsync(slideCardsWithScript,
+            new ParallelOptions { CancellationToken = cancellationToken, MaxDegreeOfParallelism = 3 },
+            async (slideCard, cancellationToken) =>
+            {
+                try
+                {
+                    // 如果已经有 AudioUrl，检查音频文件是否存在
+                    if (!string.IsNullOrEmpty(slideCard.AudioUrl))
+                    {
+                        var audioPath = slideCard.AudioUrl;
+                        if (audioPath.StartsWith("/"))
+                        {
+                            audioPath = audioPath.Substring(1);
+                        }
+                        
+                        // 注意：这里无法直接访问 WebRootPath，跳过文件存在性检查
+                        // 音频文件缺失的情况会在 API 层处理时重新生成
+                        cachedCount++;
+                        return;
+                    }
+
+                    // 生成音频
+                    var audioUrl = await _ttsService.GetAudioUrlAsync(slideCard.SpeechScript!, cancellationToken);
+                    if (!string.IsNullOrEmpty(audioUrl))
+                    {
+                        slideCard.AudioUrl = audioUrl;
+                        Interlocked.Increment(ref completedCount);
+                        _logger.LogDebug("TTS 生成成功: {SlideId}", slideCard.SlideId);
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref failedCount);
+                        _logger.LogWarning("TTS 生成返回空: {SlideId}", slideCard.SlideId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Interlocked.Increment(ref failedCount);
+                    _logger.LogError(ex, "TTS 生成失败: {SlideId}", slideCard.SlideId);
+                }
+            });
+
+        _logger.LogInformation("TTS 生成完成: 成功 {CompletedCount}, 缓存 {CachedCount}, 失败 {FailedCount}, 空脚本 {EmptyCount}", 
+            completedCount, cachedCount, failedCount, emptyCount);
     }
 }
