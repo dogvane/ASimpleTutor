@@ -209,19 +209,22 @@ public class KnowledgePointsController : ControllerBase
     /// </summary>
     [HttpGet("slide-cards")]
     public async Task<IActionResult> GetSlideCards(
-        [FromQuery] string kpId, 
+        [FromQuery] string kpId,
         [FromServices] IWebHostEnvironment env,
+        [FromServices] KnowledgeSystemStore store,
         CancellationToken cancellationToken)
     {
         var validationResult = ValidateRequest(kpId, out var kp);
         if (validationResult != null) return validationResult;
 
         var slideCards = kp.SlideCards ?? new List<SlideCard>();
+        var hasChanges = false;
 
         var needsUpdateSpeechScript = slideCards.Any(sc => sc.SpeechScript == null);
         if (needsUpdateSpeechScript)
         {
             await _learningGenerator.UpdateSpeechScriptsAsync(slideCards, cancellationToken);
+            hasChanges = true;
         }
 
         var ttsSettings = await _settingsService.GetTtsSettingsAsync();
@@ -233,11 +236,21 @@ public class KnowledgePointsController : ControllerBase
         foreach (var sc in slideCards)
         {
             var audioUrl = await ProcessSlideCardAudio(sc, env, stats, cancellationToken);
+            if (!string.IsNullOrEmpty(audioUrl) && string.IsNullOrEmpty(sc.AudioUrl))
+            {
+                hasChanges = true;
+            }
             slideCardResponses.Add(CreateSlideCardResponse(sc, audioUrl, ttsSpeed));
         }
 
         _logger.LogInformation("[TTS] 音频 URL 生成完成，总幻灯片数={Total}, 已生成={Generated}, 已缓存={Cached}, 无脚本={Empty}, 错误={Errors}",
             slideCards.Count, stats.Generated, stats.Cached, stats.Empty, stats.Error);
+
+        if (hasChanges && _knowledgeSystem != null)
+        {
+            await store.SaveAsync(_knowledgeSystem, cancellationToken: cancellationToken);
+            _logger.LogInformation("幻灯片卡片数据已保存: {KpId}", kpId);
+        }
 
         return Ok(new { id = kp.KpId, title = kp.Title, slideCards = slideCardResponses });
      }
