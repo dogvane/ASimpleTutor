@@ -127,10 +127,9 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
         // 检查 snippetTexts 是否为空
         if (string.IsNullOrEmpty(snippetTexts))
         {
-            _logger.LogError("原文片段为空: {KpId}", kp.KpId);
-            
-            // 降级：使用知识点本身的信息生成习题
-            return await GenerateExercisesWithFallbackAsync(kp, count, cancellationToken);
+            var errorMsg = $"原文片段为空，无法生成习题。知识点ID: {kp.KpId}，章节路径: {string.Join(" > ", kp.ChapterPath)}";
+            _logger.LogError(errorMsg);
+            throw new InvalidOperationException(errorMsg);
         }
 
         // 如果原文片段长度不足，仍然尝试生成习题
@@ -243,100 +242,6 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
             .ToList();
 
         _logger.LogInformation("成功生成 {Count} 道习题", exercises.Count);
-        return exercises;
-    }
-
-    /// <summary>
-    /// 降级：使用知识点本身的信息生成习题
-    /// </summary>
-    private async Task<List<Exercise>> GenerateExercisesWithFallbackAsync(
-        KnowledgePoint kp,
-        int count,
-        CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("使用降级策略生成习题: {KpId}", kp.KpId);
-
-        var systemPrompt = @"你是一个习题生成专家。你的任务是根据提供的知识点生成高质量的练习题。
-
-请生成 " + count + @" 道选择题，题型应多样化，包括：
-- SingleChoice（单选题）
-- TrueFalse（判断题）
-
-请以 JSON 格式输出，结构如下：
-{
-  ""exercises"": [
-    {
-      ""type"": ""SingleChoice|TrueFalse"",
-      ""difficulty"": 1-5,
-      ""question"": ""题目内容"",
-      ""options"": [""选项A"", ""选项B"", ""选项C"", ""选项D""] ,
-      ""correct_answer"": ""选项A"",
-      ""key_points"": [""考查要点1"", ""考查要点2""] ,
-      ""explanation"": ""答案解释（必须填写）""
-    }
-  ]
-}
-
-类型说明：
-- SingleChoice = 单选题，需要 4 个选项（A、B、C、D）
-- TrueFalse = 判断题，选项为 [""正确"", ""错误""]
-
-生成原则：
-1. 题目难度为基础理解（difficulty=1-2），基于知识点的标题和章节信息
-2. 单选题：1个正确答案 + 3个干扰项，选项要合理且具有迷惑性
-3. 判断题：正确/错误选项，判断依据要明确
-4. 基于知识点的标题和章节信息出题
-5. type 字段必须使用英文
-6. explanation 必须填写，解释要清晰说明为什么正确答案是对的
-7. difficulty 反映题目难度（1最简单，5最难）
-8. 选项内容要简洁明了，避免过长或过于相似的选项
-9. 干扰项要基于常见错误理解，但要有明显的错误点
-
-自检要求：
-- 生成的题目数量应与 count 基本一致
-- type 必须是有效类型之一（SingleChoice 或 TrueFalse）
-- correct_answer 必须是 options 中的一个选项
-- explanation 必须填写，内容要清晰准确
-- 选项数量必须符合题型要求（单选题4个选项，判断题2个选项）
-- 如果无法生成指定数量的题目，返回实际能生成的数量";
-
-        var userMessage = $"知识点：{kp.Title}\n" +
-                          $"知识点类型：{kp.Type}\n" +
-                          $"章节：{string.Join(" > ", kp.ChapterPath)}\n" +
-                          $"知识点摘要：{kp.Summary?.Definition ?? "无摘要"}";
-
-        var response = await _llmService.ChatJsonAsync<ExercisesResponse>(
-            systemPrompt,
-            userMessage,
-            cancellationToken);
-
-        var exerciseDtos = response?.Exercises ?? new List<ExerciseDto>();
-
-        // 自检：验证题目数据
-        if (exerciseDtos.Count == 0)
-        {
-            _logger.LogWarning("降级策略未能生成任何习题: {KpId}", kp.KpId);
-        }
-        else if (exerciseDtos.Count < count)
-        {
-            _logger.LogWarning("降级策略生成的题目数量不足: {ActualCount}/{ExpectedCount}, {KpId}",
-                exerciseDtos.Count, count, kp.KpId);
-        }
-
-        // 将 DTO 转换为 Exercise 并分配 ID
-        var exercises = exerciseDtos
-            .Select((dto, index) =>
-            {
-                var exercise = dto.ToExercise();
-                exercise.ExerciseId = $"{kp.KpId}_ex_{index}";
-                exercise.KpId = kp.KpId;
-                exercise.EvidenceSnippetIds = new List<string> { string.Join(" > ", kp.ChapterPath) };
-                exercise.CreatedAt = DateTime.UtcNow;
-                return exercise;
-            })
-            .ToList();
-
-        _logger.LogInformation("降级策略成功生成 {Count} 道习题", exercises.Count);
         return exercises;
     }
 

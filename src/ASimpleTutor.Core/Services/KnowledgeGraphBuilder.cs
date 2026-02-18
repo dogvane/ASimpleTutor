@@ -1,5 +1,7 @@
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
+using ASimpleTutor.Core.Models.Dto;
+using Microsoft.Extensions.Logging;
 
 namespace ASimpleTutor.Core.Services;
 
@@ -9,10 +11,20 @@ namespace ASimpleTutor.Core.Services;
 public class KnowledgeGraphBuilder : IKnowledgeGraphBuilder
 {
     private readonly KnowledgeSystemStore _knowledgeSystemStore;
+    private readonly KnowledgeGraphStore _graphStore;
+    private readonly ILLMService? _llmService;
+    private readonly ILogger<KnowledgeGraphBuilder> _logger;
 
-    public KnowledgeGraphBuilder(KnowledgeSystemStore knowledgeSystemStore)
+    public KnowledgeGraphBuilder(
+        KnowledgeSystemStore knowledgeSystemStore,
+        KnowledgeGraphStore graphStore,
+        ILLMService? llmService = null,
+        ILogger<KnowledgeGraphBuilder>? logger = null)
     {
         _knowledgeSystemStore = knowledgeSystemStore;
+        _graphStore = graphStore;
+        _llmService = llmService;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<KnowledgeGraphBuilder>.Instance;
     }
 
     public KnowledgeGraph Build(List<KnowledgePoint> knowledgePoints, KnowledgeGraphBuildOptions? options = null)
@@ -33,8 +45,48 @@ public class KnowledgeGraphBuilder : IKnowledgeGraphBuilder
         // 构建节点
         BuildNodes(graph, filteredPoints, options);
 
-        // 构建边（关系）
-        BuildEdges(graph, options);
+        // 同步方法不支持 LLM 关系提取，不构建边
+        // 如需构建知识图谱关系，请使用 BuildAsync 方法
+
+        return graph;
+    }
+
+    public async Task<KnowledgeGraph> BuildAsync(List<KnowledgePoint> knowledgePoints, KnowledgeGraphBuildOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        options ??= new KnowledgeGraphBuildOptions();
+
+        _logger.LogInformation("开始异步构建知识图谱，知识点数量: {Count}", knowledgePoints.Count);
+
+        var graph = new KnowledgeGraph
+        {
+            GraphId = Guid.NewGuid().ToString(),
+            BookHubId = knowledgePoints.FirstOrDefault()?.BookHubId ?? string.Empty,
+            Nodes = new List<KnowledgeGraphNode>(),
+            Edges = new List<KnowledgeGraphEdge>()
+        };
+
+        // 过滤知识点
+        var filteredPoints = FilterKnowledgePoints(knowledgePoints, options);
+
+        // 构建节点
+        BuildNodes(graph, filteredPoints, options);
+        _logger.LogInformation("知识图谱节点构建完成，节点数量: {Count}", graph.Nodes.Count);
+
+        // 如果没有 LLM 服务，抛出错误
+        if (_llmService == null)
+        {
+            throw new InvalidOperationException(
+                $"知识图谱构建失败：未配置 LLM 服务。知识点数量: {knowledgePoints.Count}，" +
+                $"BookHubId: {knowledgePoints.FirstOrDefault()?.BookHubId ?? "未设置"}");
+        }
+
+        _logger.LogInformation("使用 LLM 提取知识点之间的关系");
+        await BuildEdgesWithLLMAsync(graph, filteredPoints, options, cancellationToken);
+        _logger.LogInformation("LLM 关系提取完成，边数量: {Count}", graph.Edges.Count);
+
+        // 保存知识图谱
+        await _graphStore.SaveAsync(graph, cancellationToken);
+        _logger.LogInformation("知识图谱已保存: {BookHubId}", graph.BookHubId);
 
         return graph;
     }
@@ -47,7 +99,13 @@ public class KnowledgeGraphBuilder : IKnowledgeGraphBuilder
             throw new InvalidOperationException($"Knowledge system not found for book hub id: {bookHubId}");
         }
 
-        return Build(result.KnowledgeSystem.KnowledgePoints, options);
+        // 使用异步构建方法以支持 LLM 关系提取
+        var graph = await BuildAsync(result.KnowledgeSystem.KnowledgePoints, options);
+
+        // 确保设置 BookHubId
+        graph.BookHubId = bookHubId;
+
+        return graph;
     }
 
     public KnowledgeGraph GetSubgraph(KnowledgeGraph graph, string rootNodeId, int depth = 2)
@@ -225,103 +283,209 @@ public class KnowledgeGraphBuilder : IKnowledgeGraphBuilder
         }
     }
 
-    private void BuildEdges(KnowledgeGraph graph, KnowledgeGraphBuildOptions options)
+    /// <summary>
+    /// 使用 LLM 提取知识点之间的关系
+    /// </summary>
+    private async Task BuildEdgesWithLLMAsync(KnowledgeGraph graph, List<KnowledgePoint> knowledgePoints, KnowledgeGraphBuildOptions options, CancellationToken cancellationToken)
     {
-        if (!options.AddDefaultRelations)
+        if (_llmService == null)
             return;
 
-        var nodes = graph.Nodes;
+        // 将知识点分批处理，每批最多 20 个知识点（避免单次请求过大）
+        var batches = knowledgePoints
+            .Select((kp, index) => new { kp, index })
+            .GroupBy(x => x.index / 20)
+            .Select(g => g.Select(x => x.kp).ToList())
+            .ToList();
 
-        // 构建不同类型的关系
-        foreach (var sourceNode in nodes)
+        _logger.LogInformation("将 {TotalCount} 个知识点分为 {BatchCount} 批进行关系提取（并发处理）", knowledgePoints.Count, batches.Count);
+
+        // 使用并发处理批次
+        var allEdges = new List<KnowledgeGraphEdge>();
+        var lockObj = new object();
+
+        await Parallel.ForEachAsync(batches, new ParallelOptions { CancellationToken = cancellationToken }, async (batch, ct) =>
         {
-            foreach (var targetNode in nodes)
+            try
             {
-                if (sourceNode.NodeId == targetNode.NodeId)
-                    continue;
+                var edges = await ExtractRelationshipsForBatchAsync(batch, graph, ct);
 
-                var edge = CreateEdge(sourceNode, targetNode);
-                if (edge != null)
+                // 线程安全地添加边
+                lock (lockObj)
                 {
-                    graph.Edges.Add(edge);
+                    allEdges.AddRange(edges);
                 }
             }
-        }
+            catch (Exception ex)
+            {
+                var batchKpIds = string.Join(", ", batch.Select(kp => kp.KpId));
+                _logger.LogError(ex, "批次关系提取失败，批次知识点: {KpIds}", batchKpIds);
+                throw new InvalidOperationException($"关系提取失败，批次知识点: {batchKpIds}", ex);
+            }
+        });
+
+        graph.Edges = allEdges;
     }
 
-    private KnowledgeGraphEdge? CreateEdge(KnowledgeGraphNode sourceNode, KnowledgeGraphNode targetNode)
+    /// <summary>
+    /// 为一批知识点提取关系
+    /// </summary>
+    private async Task<List<KnowledgeGraphEdge>> ExtractRelationshipsForBatchAsync(List<KnowledgePoint> batch, KnowledgeGraph graph, CancellationToken cancellationToken)
     {
-        // 根据节点关系创建不同类型的边
-        var edgeType = DetermineEdgeType(sourceNode, targetNode);
-        var weight = CalculateEdgeWeight(sourceNode, targetNode, edgeType);
+        var systemPrompt = @"你是一个知识图谱关系提取专家。你的任务是分析给定的知识点列表，识别它们之间的语义关系。
 
-        // 过滤弱关系
-        if (weight < 0.1f)
-            return null;
+请分析知识点之间的以下类型关系：
+1. Related（相关）：知识点内容相关或有联系
+2. DependsOn（依赖）：源知识点依赖目标知识点（需要先理解目标知识点）
+3. Contains（包含）：源知识点包含目标知识点
+4. Contrast（对比）：源知识点与目标知识点形成对比
+5. ExampleOf（示例）：源知识点是目标知识点的示例
+6. Extends（扩展）：源知识点扩展了目标知识点
+7. Implements（实现）：源知识点实现了目标知识点
 
-        return new KnowledgeGraphEdge
+请以 JSON 格式输出，必须严格按照以下格式：
+{
+  ""relationships"": [
+    {
+      ""source_id"": ""知识点ID（必须使用提供的ID）"",
+      ""target_id"": ""知识点ID（必须使用提供的ID）"",
+      ""type"": ""Related"",
+      ""weight"": 0.5,
+      ""description"": ""关系描述""
+    }
+  ]
+}
+
+重要规则：
+1. source_id 和 target_id 必须使用提供的知识点 ID（如 kp_0000, kp_0001 等）
+2. type 必须是以下值之一：Related, DependsOn, Contains, Contrast, ExampleOf, Extends, Implements
+3. weight 是 0.3 到 1.0 之间的数字
+4. 只为真正有关系的知识点创建边，不要为所有知识点对创建关系
+5. 同一章或相邻章节的知识点更可能有 Related 关系
+6. 依赖关系要谨慎判断，确保是真正的学习依赖
+7. 每个知识点至少应该与 1-3 个其他知识点有关系
+8. 避免创建过多的关系，专注于最重要的关系
+
+示例：
+如果知识点 kp_0000（智能体基础）和 kp_0001（智能体架构）相关，应该创建：
+{
+  ""source_id"": ""kp_0000"",
+  ""target_id"": ""kp_0001"",
+  ""type"": ""Related"",
+  ""weight"": 0.7,
+  ""description"": ""智能体架构是智能体基础的延伸""
+}";
+
+        // 构建知识点摘要
+        var knowledgePointsSummary = string.Join("\n\n", batch.Select(kp =>
+            $"ID: {kp.KpId}\n" +
+            $"标题: {kp.Title}\n" +
+            $"类型: {kp.Type}\n" +
+            $"章节: {string.Join(" > ", kp.ChapterPath)}\n" +
+            $"定义: {kp.Summary?.Definition ?? "无"}"
+        ));
+
+        var userMessage = $"请分析以下 {batch.Count} 个知识点之间的关系，为每个知识点创建 1-3 个关系：\n\n{knowledgePointsSummary}\n\n" +
+                          $"请返回 JSON 格式的关系列表，确保 source_id 和 target_id 使用上面提供的 ID。";
+
+        _logger.LogInformation("发送 LLM 请求，知识点数量: {Count}", batch.Count);
+        _logger.LogDebug("用户消息: {UserMessage}", userMessage);
+
+        var response = await _llmService.ChatJsonAsync<KnowledgeGraphRelationshipsResponse>(
+            systemPrompt,
+            userMessage,
+            cancellationToken);
+
+        // 记录响应详情
+        if (response == null)
         {
-            EdgeId = Guid.NewGuid().ToString(),
-            SourceNodeId = sourceNode.NodeId,
-            TargetNodeId = targetNode.NodeId,
-            Type = edgeType,
-            Weight = weight,
-            Description = GetEdgeDescription(edgeType)
+            _logger.LogError("LLM 返回的响应为 null");
+            throw new InvalidOperationException("LLM 返回的响应为 null");
+        }
+
+        if (response.Relationships == null)
+        {
+            _logger.LogError("LLM 返回的 Relationships 字段为 null");
+            _logger.LogError("完整响应对象: {Response}", Newtonsoft.Json.JsonConvert.SerializeObject(response));
+            throw new InvalidOperationException("LLM 返回的 Relationships 字段为 null");
+        }
+
+        _logger.LogInformation("LLM 返回了 {RelationshipCount} 条关系", response.Relationships.Count);
+
+        var edges = new List<KnowledgeGraphEdge>();
+        var graphNodeIds = graph.Nodes.Select(n => n.NodeId).ToHashSet();
+
+        foreach (var rel in response.Relationships)
+        {
+            _logger.LogDebug("处理关系: SourceId=[{SourceId}], TargetId=[{TargetId}], Type=[{Type}]",
+                rel.SourceId, rel.TargetId, rel.Type);
+
+            // 验证节点是否存在
+            var sourceExists = graphNodeIds.Contains(rel.SourceId);
+            var targetExists = graphNodeIds.Contains(rel.TargetId);
+
+            if (!sourceExists)
+            {
+                _logger.LogWarning("源节点不存在: {SourceId}", rel.SourceId);
+                _logger.LogWarning("可用的节点ID（前10个）: {NodeIds}", string.Join(", ", graphNodeIds.Take(10)));
+                _logger.LogWarning("完整的关系对象: {Relationship}", Newtonsoft.Json.JsonConvert.SerializeObject(rel));
+                continue;
+            }
+
+            if (!targetExists)
+            {
+                _logger.LogWarning("目标节点不存在: {TargetId}", rel.TargetId);
+                _logger.LogWarning("可用的节点ID（前10个）: {NodeIds}", string.Join(", ", graphNodeIds.Take(10)));
+                _logger.LogWarning("完整的关系对象: {Relationship}", Newtonsoft.Json.JsonConvert.SerializeObject(rel));
+                continue;
+            }
+
+            var edge = new KnowledgeGraphEdge
+            {
+                EdgeId = Guid.NewGuid().ToString(),
+                SourceNodeId = rel.SourceId,
+                TargetNodeId = rel.TargetId,
+                Type = ParseEdgeType(rel.Type),
+                Weight = Math.Clamp(rel.Weight, 0.0f, 1.0f),
+                Description = rel.Description
+            };
+
+            edges.Add(edge);
+            _logger.LogDebug("成功添加关系: {SourceId} -> {TargetId}, 类型: {Type}, 权重: {Weight}",
+                edge.SourceNodeId, edge.TargetNodeId, edge.Type, edge.Weight);
+        }
+
+        _logger.LogInformation("批次处理完成，共 {RelationshipCount} 条关系，有效 {ValidEdgeCount} 条",
+            response.Relationships.Count, edges.Count);
+
+        // 如果没有提取到任何关系，抛出错误而不是使用降级策略
+        if (edges.Count == 0)
+        {
+            var errorMsg = $"批次 {batch.Count} 个知识点未提取到任何有效关系。LLM 返回了 {response.Relationships.Count} 条关系，但所有关系的节点 ID 都无效。";
+            _logger.LogError(errorMsg);
+            _logger.LogError("批次中的知识点 ID: {KpIds}", string.Join(", ", batch.Select(kp => kp.KpId)));
+            _logger.LogError("图谱中的节点 ID（前10个）: {NodeIds}", string.Join(", ", graphNodeIds.Take(10)));
+            _logger.LogError("LLM 返回的关系数量: {Count}", response.Relationships.Count);
+
+            throw new InvalidOperationException(errorMsg);
+        }
+
+        return edges;
+    }
+
+    private KnowledgeGraphEdgeType ParseEdgeType(string type)
+    {
+        return type.ToLowerInvariant() switch
+        {
+            "related" => KnowledgeGraphEdgeType.Related,
+            "dependson" => KnowledgeGraphEdgeType.DependsOn,
+            "contains" => KnowledgeGraphEdgeType.Contains,
+            "contrast" => KnowledgeGraphEdgeType.Contrast,
+            "exampleof" => KnowledgeGraphEdgeType.ExampleOf,
+            "extends" => KnowledgeGraphEdgeType.Extends,
+            "implements" => KnowledgeGraphEdgeType.Implements,
+            _ => KnowledgeGraphEdgeType.Related
         };
-    }
-
-    private KnowledgeGraphEdgeType DetermineEdgeType(KnowledgeGraphNode sourceNode, KnowledgeGraphNode targetNode)
-    {
-        // 如果是章节节点，可能包含其他节点
-        if (sourceNode.Type == KpType.Chapter && targetNode.Type != KpType.Chapter &&
-            sourceNode.ChapterPath.SequenceEqual(targetNode.ChapterPath.Take(sourceNode.ChapterPath.Count)))
-        {
-            return KnowledgeGraphEdgeType.Contains;
-        }
-
-        // 相同章节的节点通常是相关关系
-        if (sourceNode.ChapterPath.SequenceEqual(targetNode.ChapterPath))
-        {
-            return KnowledgeGraphEdgeType.Related;
-        }
-
-        // 共享相同的父章节的节点也是相关关系
-        var minDepth = Math.Min(sourceNode.ChapterPath.Count, targetNode.ChapterPath.Count);
-        if (sourceNode.ChapterPath.Take(minDepth - 1).SequenceEqual(targetNode.ChapterPath.Take(minDepth - 1)))
-        {
-            return KnowledgeGraphEdgeType.Related;
-        }
-
-        // 默认关系
-        return KnowledgeGraphEdgeType.Related;
-    }
-
-    private float CalculateEdgeWeight(KnowledgeGraphNode sourceNode, KnowledgeGraphNode targetNode, KnowledgeGraphEdgeType edgeType)
-    {
-        float weight = 0.0f;
-
-        // 基于关系类型的权重
-        switch (edgeType)
-        {
-            case KnowledgeGraphEdgeType.Contains:
-                weight = 0.8f;
-                break;
-            case KnowledgeGraphEdgeType.DependsOn:
-                weight = 0.7f;
-                break;
-            case KnowledgeGraphEdgeType.Related:
-                weight = 0.5f;
-                break;
-            default:
-                weight = 0.3f;
-                break;
-        }
-
-        // 基于相似度调整权重
-        var similarity = CalculateSimilarity(sourceNode, targetNode);
-        weight *= (0.5f + similarity * 0.5f);
-
-        return Math.Min(1.0f, weight);
     }
 
     private float CalculateNodeSize(float importance)
@@ -348,20 +512,5 @@ public class KnowledgeGraphBuilder : IKnowledgeGraphBuilder
         var x = point.ChapterPath.Count * 200;
         var y = graph.Nodes.Count % 10 * 100 + point.ChapterPath.Count * 50;
         return new KnowledgeGraphNodePosition { X = x, Y = y };
-    }
-
-    private string? GetEdgeDescription(KnowledgeGraphEdgeType type)
-    {
-        return type switch
-        {
-            KnowledgeGraphEdgeType.Contains => "包含",
-            KnowledgeGraphEdgeType.DependsOn => "依赖",
-            KnowledgeGraphEdgeType.Related => "相关",
-            KnowledgeGraphEdgeType.Contrast => "对比",
-            KnowledgeGraphEdgeType.ExampleOf => "示例",
-            KnowledgeGraphEdgeType.Extends => "扩展",
-            KnowledgeGraphEdgeType.Implements => "实现",
-            _ => null
-        };
     }
 }

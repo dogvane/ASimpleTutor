@@ -298,6 +298,11 @@ public class LLMService : ILLMService
 
                 // 清理可能的 markdown 代码块标记
                 var cleanedResponse = response.Trim();
+
+                // 移除开头的换行符
+                cleanedResponse = cleanedResponse.TrimStart('\n', '\r');
+
+                // 移除 markdown 代码块标记
                 if (cleanedResponse.StartsWith("```json"))
                 {
                     cleanedResponse = cleanedResponse.Substring(7);
@@ -355,6 +360,11 @@ public class LLMService : ILLMService
                 response = await ChatWithOptionsAsync(jsonPrompt, userMessage, temperature, cancellationToken);
 
                 var cleanedResponse = response.Trim();
+
+                // 移除开头的换行符
+                cleanedResponse = cleanedResponse.TrimStart('\n', '\r');
+
+                // 移除 markdown 代码块标记
                 if (cleanedResponse.StartsWith("```json"))
                 {
                     cleanedResponse = cleanedResponse.Substring(7);

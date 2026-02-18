@@ -17,6 +17,15 @@ public interface IKnowledgeGraphBuilder
     KnowledgeGraph Build(List<KnowledgePoint> knowledgePoints, KnowledgeGraphBuildOptions? options = null);
 
     /// <summary>
+    /// 异步构建知识图谱（使用 LLM 提取关系）
+    /// </summary>
+    /// <param name="knowledgePoints">知识点列表</param>
+    /// <param name="options">知识图谱构建选项</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>知识图谱</returns>
+    Task<KnowledgeGraph> BuildAsync(List<KnowledgePoint> knowledgePoints, KnowledgeGraphBuildOptions? options = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 根据书籍中心 ID 构建知识图谱
     /// </summary>
     /// <param name="bookHubId">书籍中心 ID</param>

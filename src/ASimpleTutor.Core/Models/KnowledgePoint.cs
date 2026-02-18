@@ -457,3 +457,44 @@ public class LearningContentCache
     /// </summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// 学习进度
+/// </summary>
+public class LearningProgress
+{
+    /// <summary>
+    /// 用户标识
+    /// </summary>
+    public string UserId { get; set; } = "default";
+
+    /// <summary>
+    /// 知识点 ID
+    /// </summary>
+    public string KpId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 学习状态
+    /// </summary>
+    public LearningStatus Status { get; set; } = LearningStatus.Todo;
+
+    /// <summary>
+    /// 掌握度（0.0 ~ 1.0）
+    /// </summary>
+    public float MasteryLevel { get; set; }
+
+    /// <summary>
+    /// 复习次数
+    /// </summary>
+    public int ReviewCount { get; set; }
+
+    /// <summary>
+    /// 最后复习时间
+    /// </summary>
+    public DateTime? LastReviewTime { get; set; }
+
+    /// <summary>
+    /// 已完成的幻灯片 ID 列表
+    /// </summary>
+    public List<string>? CompletedSlideIds { get; set; }
+}

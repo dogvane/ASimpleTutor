@@ -73,6 +73,12 @@ public class KnowledgeSystemCoordinator : IKnowledgeSystemCoordinator
                 return (knowledgeSystem, documents);
             }
 
+            // 设置文档的 BookHubId
+            foreach (var doc in documents)
+            {
+                doc.BookHubId = bookHubId;
+            }
+
             // 过程保存：扫描完成后保存文档信息
             _progressService.UpdateProgress(bookHubId, "扫描文档", 10, $"扫描完成，发现 {documents.Count} 个文档");
             await SaveProgressAsync(knowledgeSystem, documents, "扫描完成", cancellationToken);
