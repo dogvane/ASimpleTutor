@@ -107,7 +107,7 @@ public class ChaptersController : ControllerBase
 
             // 提取最后一级标题，避免显示完整路径
             var displayTitle = ExtractLastLevelTitle(child.Title);
-            
+
             result.Add(new ChapterTreeNode
             {
                 Id = child.Id,
@@ -116,7 +116,7 @@ public class ChaptersController : ControllerBase
                 // 只有第一层默认展开
                 Expanded = true,
                 // 递归构建子节点
-                Children = BuildChildNodes(child)
+                Children = BuildChildNodes(child, 2) // 传递当前层级 + 1
             });
         }
 
@@ -126,7 +126,7 @@ public class ChaptersController : ControllerBase
     /// <summary>
     /// 构建子节点树
     /// </summary>
-    private static List<ChapterTreeNode> BuildChildNodes(KnowledgeTreeNode? node)
+    private static List<ChapterTreeNode> BuildChildNodes(KnowledgeTreeNode? node, int level)
     {
         if (node == null)
             return new List<ChapterTreeNode>();
@@ -146,10 +146,10 @@ public class ChaptersController : ControllerBase
             {
                 Id = child.Id,
                 Title = displayTitle,
-                Level = 2, // 第二层及以下固定为 level 2
+                Level = level, // 使用传入的层级
                 Expanded = false,
-                // 不递归更深，只显示两层
-                Children = new List<ChapterTreeNode>()
+                // 递归构建更深层次的子节点
+                Children = BuildChildNodes(child, level + 1) // 递归处理下一层
             });
         }
 
