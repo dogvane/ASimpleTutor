@@ -2,9 +2,14 @@ using ASimpleTutor.Core.Configuration;
 using ASimpleTutor.Core.Interfaces;
 using ASimpleTutor.Core.Models;
 using ASimpleTutor.Core.Services;
+using ASimpleTutor.Api.Services;
+using ASimpleTutor.Api.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Hosting;
+using Microsoft.AspNetCore.Hosting;
+using Moq;
 using Newtonsoft.Json;
 
 namespace ASimpleTutor.IntegrationTests;
@@ -247,7 +252,44 @@ public class Program
 
         try
         {
-            var builder = new KnowledgeBuilder(scanner, llmService, _builderLogger);
+            // 创建所需的服务依赖
+            var storeLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<KnowledgeSystemStore>();
+            var store = new KnowledgeSystemStore(storeLogger, outputPath);
+
+            var ttsLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<TtsService>();
+            var appConfig = new AppConfig();
+            var settingsLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<SettingsService>();
+            var settingsService = new SettingsService(
+                appConfig,
+                settingsLogger,
+                LoggerFactory.Create(b => b.AddConsole()),
+                llmService,
+                new Mock<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>().Object);
+            var ttsService = new TtsService(appConfig, ttsLogger, new Mock<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>().Object, settingsService);
+
+            var learningGeneratorLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<LearningGenerator>();
+            var learningGenerator = new LearningGenerator(store, llmService, learningGeneratorLogger, settingsService);
+
+            var ttsGeneratorLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<TtsGenerator>();
+            var scanProgressLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<ScanProgressService>();
+            var ttsGenerator = new TtsGenerator(ttsService, learningGenerator, new ScanProgressService(scanProgressLogger), ttsGeneratorLogger);
+
+            var knowledgeExtractor = new LLMKnowledgeExtractor(llmService, LoggerFactory.Create(b => b.AddConsole()).CreateLogger<LLMKnowledgeExtractor>());
+            var learningContentGenerator = new LLMLearningContentGenerator(llmService, LoggerFactory.Create(b => b.AddConsole()).CreateLogger<LLMLearningContentGenerator>());
+            var treeBuilder = new KnowledgeTreeBuilder();
+
+            var coordinatorLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<KnowledgeSystemCoordinator>();
+            var coordinator = new KnowledgeSystemCoordinator(
+                scanner,
+                knowledgeExtractor,
+                learningContentGenerator,
+                ttsGenerator,
+                treeBuilder,
+                store,
+                new ScanProgressService(scanProgressLogger),
+                coordinatorLogger);
+
+            var builder = new KnowledgeBuilder(coordinator);
             var (ks, docs) = await builder.BuildAsync("test-book", dataPath);
             knowledgeSystem = ks;
             documents = docs;
@@ -286,6 +328,12 @@ public class Program
         {
             results.KnowledgeBuilderTest = new KnowledgeBuilderTestResult { Success = false, ErrorMessage = ex.Message };
             Console.WriteLine($"  失败: {ex.Message}");
+            Console.WriteLine($"  堆栈跟踪: {ex.StackTrace}");
+            if (ex.InnerException != null)
+            {
+                Console.WriteLine($"  内部异常: {ex.InnerException.Message}");
+                Console.WriteLine($"  内部异常堆栈跟踪: {ex.InnerException.StackTrace}");
+            }
             return (null, null);
         }
 
@@ -327,7 +375,15 @@ public class Program
             await store.SaveAsync(knowledgeSystem!, documents, CancellationToken.None);
 
             // 创建学习内容生成服务
-            var generator = new LearningGenerator(store, llmService, _generatorLogger);
+            var appConfig = new AppConfig();
+            var settingsLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<SettingsService>();
+            var settingsService = new SettingsService(
+                appConfig,
+                settingsLogger,
+                LoggerFactory.Create(b => b.AddConsole()),
+                llmService,
+                new Mock<IWebHostEnvironment>().Object);
+            var generator = new LearningGenerator(store, llmService, _generatorLogger, settingsService);
             var learningPack = await generator.GenerateAsync(testKp);
 
             results.LearningGeneratorTest = new LearningGeneratorTestResult

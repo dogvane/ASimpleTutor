@@ -30,7 +30,16 @@ public class SettingsService : ISettingsService
         _logger = logger;
         _loggerFactory = loggerFactory;
         _llmService = llmService;
-        _userConfigPath = Path.Combine(env.ContentRootPath, "appsettings.user.json");
+
+        // 检查 ContentRootPath 是否为空，如果为空则使用当前目录
+        var contentRootPath = env.ContentRootPath;
+        if (string.IsNullOrEmpty(contentRootPath))
+        {
+            contentRootPath = Directory.GetCurrentDirectory();
+            _logger.LogWarning("ContentRootPath 为空，使用当前目录: {ContentRootPath}", contentRootPath);
+        }
+
+        _userConfigPath = Path.Combine(contentRootPath, "appsettings.user.json");
     }
 
     /// <summary>

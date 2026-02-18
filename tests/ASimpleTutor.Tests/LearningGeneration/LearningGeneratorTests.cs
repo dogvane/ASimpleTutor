@@ -19,6 +19,7 @@ public class LearningGeneratorTests
 {
     private readonly Mock<ILLMService> _llmServiceMock;
     private readonly Mock<ILogger<LearningGenerator>> _loggerMock;
+    private readonly Mock<ISettingsService> _settingsServiceMock;
     private readonly KnowledgeSystemStore _knowledgeSystemStore;
     private readonly LearningGenerator _generator;
 
@@ -26,13 +27,28 @@ public class LearningGeneratorTests
     {
         _llmServiceMock = new Mock<ILLMService>();
         _loggerMock = new Mock<ILogger<LearningGenerator>>();
+        _settingsServiceMock = new Mock<ISettingsService>();
         var knowledgeSystemStoreLoggerMock = new Mock<ILogger<KnowledgeSystemStore>>();
         _knowledgeSystemStore = new KnowledgeSystemStore(knowledgeSystemStoreLoggerMock.Object, "test-data");
+
+        // 设置 settings service 的默认返回值
+        _settingsServiceMock
+            .Setup(s => s.GetTtsSettingsAsync())
+            .ReturnsAsync(new TtsSettingsResponse
+            {
+                Enabled = false,
+                ApiKeyMasked = "test_key",
+                BaseUrl = "http://localhost:11434",
+                Voice = "test_voice",
+                Speed = 1.0f,
+                IsValid = true
+            });
 
         _generator = new LearningGenerator(
             _knowledgeSystemStore,
             _llmServiceMock.Object,
-            _loggerMock.Object);
+            _loggerMock.Object,
+            _settingsServiceMock.Object);
     }
 
     #region 正常生成测试
@@ -554,7 +570,8 @@ public class LearningGeneratorTests
             Aliases = new List<string> { "MD", "标记语言" },
             ChapterPath = new List<string> { "第一章", "1.1 基础概念" },
             Importance = 0.8f,
-            DocId = "doc_001"
+            DocId = "doc_001",
+            SectionId = "section_001" // 添加正确的 SectionId
         };
     }
 

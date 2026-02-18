@@ -16,15 +16,52 @@ public class KnowledgeSystemStore
     public KnowledgeSystemStore(ILogger<KnowledgeSystemStore> logger, string baseDataDirectory)
     {
         _logger = logger;
-        // 保存目录：datas/../saves/ 即相对于 datas 目录的 saves 文件夹
-        _storePath = Path.GetFullPath(Path.Combine(baseDataDirectory, "..", "saves"));
 
-        if (!Directory.Exists(_storePath))
+        _logger.LogDebug("KnowledgeSystemStore 构造函数参数: baseDataDirectory = '{BaseDataDirectory}'", baseDataDirectory);
+
+        // 检查参数是否为空
+        if (string.IsNullOrEmpty(baseDataDirectory))
         {
-            Directory.CreateDirectory(_storePath);
+            // 默认使用项目根目录下的 datas 文件夹
+            baseDataDirectory = "datas";
+            _logger.LogWarning("存储目录参数为空，使用默认目录: {Directory}", baseDataDirectory);
+        }
+        else
+        {
+            _logger.LogDebug("存储目录参数有效: {BaseDataDirectory}", baseDataDirectory);
         }
 
-        _logger.LogInformation("知识系统存储目录: {Path}", _storePath);
+        try
+        {
+            // 保存目录：datas/../saves/ 即相对于 datas 目录的 saves 文件夹
+            var combinedPath = Path.Combine(baseDataDirectory, "..", "saves");
+            _logger.LogDebug("组合后的路径: '{CombinedPath}'", combinedPath);
+
+            _storePath = Path.GetFullPath(combinedPath);
+            _logger.LogDebug("规范化后的路径: '{NormalizedPath}'", _storePath);
+
+            if (!Directory.Exists(_storePath))
+            {
+                Directory.CreateDirectory(_storePath);
+                _logger.LogDebug("已创建存储目录: '{Path}'", _storePath);
+            }
+            else
+            {
+                _logger.LogDebug("存储目录已存在: '{Path}'", _storePath);
+            }
+
+            _logger.LogInformation("知识系统存储目录: {Path}", _storePath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "路径处理失败，baseDataDirectory: '{BaseDataDirectory}'", baseDataDirectory);
+            // 即使路径处理失败，也设置一个默认路径，防止应用程序崩溃
+            _storePath = "saves";
+            if (!Directory.Exists(_storePath))
+            {
+                Directory.CreateDirectory(_storePath);
+            }
+        }
     }
 
     /// <summary>
@@ -96,7 +133,8 @@ public class KnowledgeSystemStore
             }
 
             // 重建知识树
-            knowledgeSystem.Tree = ASimpleTutor.Core.Services.KnowledgeBuilder.BuildKnowledgeTree(knowledgeSystem.KnowledgePoints);
+            var treeBuilder = new KnowledgeTreeBuilder();
+            knowledgeSystem.Tree = treeBuilder.Build(knowledgeSystem.KnowledgePoints);
 
             _logger.LogInformation("知识系统加载完成: {BookHubId}, 知识点: {KpCount}, 文档: {DocCount}",
                 bookHubId,

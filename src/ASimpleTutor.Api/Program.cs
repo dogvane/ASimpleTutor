@@ -67,6 +67,11 @@ builder.Services.AddSingleton<ITtsService>(sp =>
     return new TtsService(config, logger, env, ss);
 });
 
+builder.Services.AddSingleton<IKnowledgeExtractor, LLMKnowledgeExtractor>();
+builder.Services.AddSingleton<ILearningContentGenerator, LLMLearningContentGenerator>();
+builder.Services.AddSingleton<ITtsGenerator, TtsGenerator>();
+builder.Services.AddSingleton<IKnowledgeTreeBuilder, KnowledgeTreeBuilder>();
+builder.Services.AddSingleton<IKnowledgeSystemCoordinator, KnowledgeSystemCoordinator>();
 builder.Services.AddSingleton<IKnowledgeBuilder, KnowledgeBuilder>();
 builder.Services.AddSingleton<ILearningGenerator, LearningGenerator>();
 builder.Services.AddSingleton<IExerciseGenerator, ExerciseService>();

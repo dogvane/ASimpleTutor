@@ -29,8 +29,23 @@ public class TtsService : ITtsService
         _baseUrl = config.Tts.BaseUrl;
         _voice = config.Tts.Voice;
 
+        // 检查 WebRootPath 和 ContentRootPath 是否为空
+        string contentRootPath = env.ContentRootPath;
+        if (string.IsNullOrEmpty(contentRootPath))
+        {
+            contentRootPath = Directory.GetCurrentDirectory();
+            _logger.LogWarning("ContentRootPath 为空，使用当前目录: {ContentRootPath}", contentRootPath);
+        }
+
+        string webRootPath = env.WebRootPath;
+        if (string.IsNullOrEmpty(webRootPath))
+        {
+            webRootPath = Path.Combine(contentRootPath, "wwwroot");
+            _logger.LogWarning("WebRootPath 为空，使用默认路径: {WebRootPath}", webRootPath);
+        }
+
         // 音频文件存放目录：wwwroot/audios
-        _audioDirectory = Path.Combine(env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot"), "audios");
+        _audioDirectory = Path.Combine(webRootPath, "audios");
 
         if (!Directory.Exists(_audioDirectory))
         {
