@@ -71,6 +71,7 @@ builder.Services.AddSingleton<IKnowledgeExtractor, LLMKnowledgeExtractor>();
 builder.Services.AddSingleton<ILearningContentGenerator, LLMLearningContentGenerator>();
 builder.Services.AddSingleton<ITtsGenerator, TtsGenerator>();
 builder.Services.AddSingleton<IKnowledgeTreeBuilder, KnowledgeTreeBuilder>();
+builder.Services.AddSingleton<IKnowledgeGraphBuilder, KnowledgeGraphBuilder>();
 builder.Services.AddSingleton<IKnowledgeSystemCoordinator, KnowledgeSystemCoordinator>();
 builder.Services.AddSingleton<IKnowledgeBuilder, KnowledgeBuilder>();
 builder.Services.AddSingleton<ILearningGenerator, LearningGenerator>();
@@ -269,7 +270,11 @@ app.MapGet("/", () => Results.Ok(new
         "GET /api/v1/progress/overview - 获取进度概览",
         "PUT /api/v1/progress - 更新学习进度",
         "GET /api/v1/progress/mistakes - 获取错题本",
-                "PUT /api/v1/progress/mistakes/{id}/resolve - 解决错题"
+                "PUT /api/v1/progress/mistakes/{id}/resolve - 解决错题",
+                "POST /api/v1/knowledge-graph/build - 构建知识图谱",
+                "POST /api/v1/knowledge-graph/subgraph - 获取知识图谱子图",
+                "POST /api/v1/knowledge-graph/search - 搜索知识图谱节点",
+                "POST /api/v1/knowledge-graph/neighbors - 获取节点邻居"
     }
 }));
 

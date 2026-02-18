@@ -19,6 +19,11 @@ public class KnowledgeSystem
     /// 按章节路径组织的知识点树
     /// </summary>
     public KnowledgeTreeNode? Tree { get; set; }
+
+    /// <summary>
+    /// 知识图谱（包含节点和边，用于表示知识点间的语义关系）
+    /// </summary>
+    public KnowledgeGraph? Graph { get; set; }
 }
 
 /// <summary>

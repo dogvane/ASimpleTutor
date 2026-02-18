@@ -49,6 +49,10 @@ export function useAppStore() {
   const globalLoading = ref(false)
   const learningLoading = ref(false)
 
+  // 知识图谱相关
+  const knowledgeGraph = ref(null)
+  const knowledgeGraphLoading = ref(false)
+
   // 设置对话框
   const settingsDialogOpen = ref(false)
 
@@ -122,6 +126,8 @@ export function useAppStore() {
     globalError,
     globalLoading,
     learningLoading,
+    knowledgeGraph,
+    knowledgeGraphLoading,
     settingsDialogOpen,
 
     // 计算属性

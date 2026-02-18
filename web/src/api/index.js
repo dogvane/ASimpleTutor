@@ -77,3 +77,28 @@ export const updateTtsSettings = (settings) =>
     method: 'PUT',
     body: JSON.stringify(settings),
   })
+
+// Knowledge Graph APIs
+export const buildKnowledgeGraph = (bookHubId, options = {}) =>
+  apiFetch('/knowledge-graph/build', {
+    method: 'POST',
+    body: JSON.stringify({ bookHubId, options }),
+  })
+
+export const getSubgraph = (request) =>
+  apiFetch('/knowledge-graph/subgraph', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+
+export const searchKnowledgeGraphNodes = (request) =>
+  apiFetch('/knowledge-graph/search', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+
+export const getNodeNeighbors = (request) =>
+  apiFetch('/knowledge-graph/neighbors', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })

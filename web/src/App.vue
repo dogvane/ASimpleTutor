@@ -13,6 +13,7 @@ import { useAppStore } from './composables/useAppStore'
 import { useChapterLoader } from './composables/useChapterLoader'
 import { useKnowledgePointLoader } from './composables/useKnowledgePointLoader'
 import { useExercise } from './composables/useExercise'
+import { useKnowledgeGraphLoader } from './composables/useKnowledgeGraphLoader'
 
 // 初始化状态管理
 const state = useAppStore()
@@ -36,6 +37,8 @@ const {
   globalError,
   globalLoading,
   learningLoading,
+  knowledgeGraph,
+  knowledgeGraphLoading,
   settingsDialogOpen,
   currentPath,
   hasNextChapter,
@@ -77,6 +80,11 @@ const {
   updateQuizAnswer,
   submitQuizAnswer,
 } = exerciseModule
+
+const knowledgeGraphLoader = useKnowledgeGraphLoader(state)
+const {
+  refreshKnowledgeGraph,
+} = knowledgeGraphLoader
 
 // 计算属性
 const currentSlideTitle = computed(() => {
@@ -130,7 +138,7 @@ const handleRefresh = async (type) => {
       }
       break
     case 'graph':
-      await chapterLoader.loadChapters()
+      await refreshKnowledgeGraph()
       break
     default:
       console.warn('未知的刷新类型:', type)

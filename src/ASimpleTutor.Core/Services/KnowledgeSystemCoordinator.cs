@@ -15,6 +15,7 @@ public class KnowledgeSystemCoordinator : IKnowledgeSystemCoordinator
     private readonly ILearningContentGenerator _learningContentGenerator;
     private readonly ITtsGenerator _ttsGenerator;
     private readonly IKnowledgeTreeBuilder _knowledgeTreeBuilder;
+    private readonly IKnowledgeGraphBuilder _knowledgeGraphBuilder;
     private readonly KnowledgeSystemStore _store;
     private readonly ScanProgressService _progressService;
     private readonly ILogger<KnowledgeSystemCoordinator> _logger;
@@ -25,6 +26,7 @@ public class KnowledgeSystemCoordinator : IKnowledgeSystemCoordinator
         ILearningContentGenerator learningContentGenerator,
         ITtsGenerator ttsGenerator,
         IKnowledgeTreeBuilder knowledgeTreeBuilder,
+        IKnowledgeGraphBuilder knowledgeGraphBuilder,
         KnowledgeSystemStore store,
         ScanProgressService progressService,
         ILogger<KnowledgeSystemCoordinator> logger)
@@ -34,6 +36,7 @@ public class KnowledgeSystemCoordinator : IKnowledgeSystemCoordinator
         _learningContentGenerator = learningContentGenerator;
         _ttsGenerator = ttsGenerator;
         _knowledgeTreeBuilder = knowledgeTreeBuilder;
+        _knowledgeGraphBuilder = knowledgeGraphBuilder;
         _store = store;
         _progressService = progressService;
         _logger = logger;
@@ -84,28 +87,48 @@ public class KnowledgeSystemCoordinator : IKnowledgeSystemCoordinator
             _progressService.UpdateProgress(bookHubId, "提取知识点", 40, $"知识点提取完成，共 {knowledgePoints.Count} 个知识点");
             await SaveProgressAsync(knowledgeSystem, documents, "知识点提取完成", cancellationToken);
 
-            // 3. 为每个知识点预生成学习内容
-            _progressService.UpdateProgress(bookHubId, "生成学习内容", 50, "正在为知识点生成学习内容...");
+            // 3. 构建知识树
+            _progressService.UpdateProgress(bookHubId, "构建知识树", 45, "正在构建知识树...");
+            _logger.LogInformation("构建知识树");
+            knowledgeSystem.Tree = _knowledgeTreeBuilder.Build(knowledgePoints);
+
+            // 4. 构建知识图谱（为学习内容生成提供关联信息）
+            _progressService.UpdateProgress(bookHubId, "构建知识图谱", 48, "正在构建知识图谱...");
+            _logger.LogInformation("构建知识图谱");
+            try
+            {
+                knowledgeSystem.Graph = await _knowledgeGraphBuilder.BuildAsync(bookHubId);
+                _logger.LogInformation("知识图谱构建完成，包含 {NodeCount} 个节点和 {EdgeCount} 条边",
+                    knowledgeSystem.Graph?.Nodes.Count ?? 0,
+                    knowledgeSystem.Graph?.Edges.Count ?? 0);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "知识图谱构建失败，将跳过此步骤");
+                // 知识图谱构建失败不影响整体流程
+            }
+
+            // 过程保存：知识图谱构建完成后保存
+            _progressService.UpdateProgress(bookHubId, "构建知识图谱", 50, "知识图谱构建完成");
+            await SaveProgressAsync(knowledgeSystem, documents, "知识图谱构建完成", cancellationToken);
+
+            // 5. 为每个知识点预生成学习内容（此时可以使用知识图谱数据）
+            _progressService.UpdateProgress(bookHubId, "生成学习内容", 55, "正在为知识点生成学习内容...");
             _logger.LogInformation("为知识点预生成学习内容");
             await GenerateLearningContentForPointsAsync(knowledgePoints, documents, bookHubId, cancellationToken);
 
             // 过程保存：学习内容生成完成后保存
-            _progressService.UpdateProgress(bookHubId, "生成学习内容", 70, "学习内容生成完成");
+            _progressService.UpdateProgress(bookHubId, "生成学习内容", 75, "学习内容生成完成");
             await SaveProgressAsync(knowledgeSystem, documents, "学习内容生成完成", cancellationToken);
 
-            // 4. 为幻灯片卡片生成 TTS 音频
+            // 6. 为幻灯片卡片生成 TTS 音频
             _progressService.UpdateProgress(bookHubId, "生成音频", 80, "正在为幻灯片生成 TTS 音频...");
             _logger.LogInformation("为幻灯片卡片生成 TTS 音频");
             await GenerateTtsForSlideCardsAsync(knowledgePoints, bookHubId, cancellationToken);
 
             // 过程保存：TTS 生成完成后保存
-            _progressService.UpdateProgress(bookHubId, "生成音频", 90, "TTS 音频生成完成");
+            _progressService.UpdateProgress(bookHubId, "生成音频", 95, "TTS 音频生成完成");
             await SaveProgressAsync(knowledgeSystem, documents, "TTS 生成完成", cancellationToken);
-
-            // 5. 构建知识树
-            _progressService.UpdateProgress(bookHubId, "构建知识树", 95, "正在构建知识树...");
-            _logger.LogInformation("构建知识树");
-            knowledgeSystem.Tree = _knowledgeTreeBuilder.Build(knowledgePoints);
 
             // 最终保存：构建完成
             await SaveProgressAsync(knowledgeSystem, documents, "构建完成", cancellationToken);
