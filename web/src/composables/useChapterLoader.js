@@ -1,4 +1,4 @@
-import { getBookHubs, activateBookHub, getChapters, scanBooks, searchChapters, getScanProgress } from '../api'
+import { getBookHubs, activateBookHub, getChapters, scanBooks, searchChapters, getScanProgress, generateChapterContent } from '../api'
 
 /**
  * 章节加载逻辑
@@ -266,6 +266,19 @@ export function useChapterLoader(state) {
     return null
   }
 
+  // 加载章节学习内容
+  const loadChapterContent = async (chapterId) => {
+    try {
+      const data = await generateChapterContent(chapterId)
+      console.log('章节学习内容已加载:', data)
+      return data
+    } catch (error) {
+      console.error('加载章节学习内容失败:', error)
+      setError(error)
+      return null
+    }
+  }
+
   // 下一章
   const nextChapter = () => {
     if (!selectedChapter.value) return null
@@ -287,5 +300,6 @@ export function useChapterLoader(state) {
     findChapterById,
     nextChapter,
     completeScan,
+    loadChapterContent,
   }
 }

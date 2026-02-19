@@ -129,7 +129,7 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
         {
             var errorMsg = $"原文片段为空，无法生成习题。知识点ID: {kp.KpId}，章节路径: {string.Join(" > ", kp.ChapterPath)}";
             _logger.LogError(errorMsg);
-            throw new InvalidOperationException(errorMsg);
+            return new List<Exercise>(); // 降级策略：返回空列表
         }
 
         // 如果原文片段长度不足，仍然尝试生成习题

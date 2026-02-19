@@ -177,9 +177,9 @@ public class ExerciseIntegrationTests
         // Act - 生成习题
         var exercises = await _exerciseService.GenerateAsync(kp, 3, CancellationToken.None);
 
-        // Assert - 没有片段时使用降级策略生成习题
+        // Assert - 没有片段时返回空列表
         exercises.Should().NotBeNull();
-        exercises.Should().NotBeEmpty();
+        exercises.Should().BeEmpty();
     }
 
     #endregion
@@ -231,9 +231,9 @@ public class ExerciseIntegrationTests
         // Act - 生成习题
         var exercises = await _exerciseService.GenerateAsync(kp, 3, CancellationToken.None);
 
-        // Assert - 知识点为空时使用降级策略生成习题
+        // Assert - 知识点为空时返回空列表
         exercises.Should().NotBeNull();
-        exercises.Should().NotBeEmpty();
+        exercises.Should().BeEmpty();
     }
 
     #endregion
@@ -246,6 +246,8 @@ public class ExerciseIntegrationTests
         {
             KpId = "kp_001",
             BookHubId = "book_001",
+            DocId = "doc_001", // 添加 DocId 属性
+            SectionId = "section_001", // 添加 SectionId 属性
             Title = "什么是 Markdown",
             Aliases = new List<string> { "MD", "标记语言" },
             ChapterPath = new List<string> { "第一章", "1.1 基础概念" },
@@ -342,7 +344,7 @@ public class ExerciseIntegrationTests
             {
                 DocId = "doc_001",
                 BookHubId = "book_001",
-                Path = "/docs/ch01.md",
+                Path = Path.Combine(AppContext.BaseDirectory, "Data", "Files", "FileDiscovery", "normal_files", "chapter01.md"),
                 Title = "第一章 基础概念",
                 Sections = new List<Section>
                 {

@@ -178,7 +178,7 @@ public class MarkdownScanner : IScannerService
             ContentHash = ComputeHash(content)
         };
 
-        // 解析章节和段落
+        // 解析章节
         var sections = ParseSections(lines);
         doc.Sections = sections;
 

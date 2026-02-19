@@ -318,6 +318,9 @@ public class LLMService : ILLMService
 
                 cleanedResponse = cleanedResponse.Trim();
 
+                // 尝试修复常见的JSON格式问题
+                cleanedResponse = FixCommonJsonIssues(cleanedResponse);
+
                 var result = Newtonsoft.Json.JsonConvert.DeserializeObject<T>(cleanedResponse)
                            ?? throw new InvalidOperationException("JSON 解析结果为空");
 
@@ -402,6 +405,86 @@ public class LLMService : ILLMService
 
         var fallbackResponse = CreateFallbackResponse<T>();
         return fallbackResponse;
+    }
+
+    /// <summary>
+    /// 修复常见的JSON格式问题
+    /// </summary>
+    /// <param name="json">需要修复的JSON字符串</param>
+    /// <returns>修复后的JSON字符串</returns>
+    private string FixCommonJsonIssues(string json)
+    {
+        // 修复常见的JSON格式问题
+        var fixedJson = json;
+
+        // 1. 替换中文引号为英文引号
+        fixedJson = fixedJson.Replace('“', '\"').Replace('”', '\"');
+
+        // 2. 修复中文省略号为英文省略号
+        fixedJson = fixedJson.Replace("……", "...");
+
+        // 3. 修复中文空格为英文空格
+        fixedJson = fixedJson.Replace("　", " ");
+
+        // 4. 修复未闭合的字符串（如："使用 AutoTokenizer.apply_chat_template(),"）
+        // 找到所有未闭合的字符串并尝试修复
+        var stringPattern = new System.Text.RegularExpressions.Regex(@"""[^""\\]*(?:\\.[^""\\]*)*(?<!\\)""");
+
+        // 检查字符串字段是否都正确闭合
+        var matches = stringPattern.Matches(fixedJson);
+        foreach (System.Text.RegularExpressions.Match match in matches)
+        {
+            var strValue = match.Value;
+            // 检查字符串是否可能存在未闭合的问题
+            if (strValue.EndsWith(@",""") || strValue.Contains(@",""") || strValue.EndsWith(@","))
+            {
+                // 尝试修复常见的字符串格式问题
+                if (strValue.EndsWith(@","""))
+                {
+                    fixedJson = fixedJson.Replace(strValue, strValue.Replace(@",""", @""","));
+                }
+                else if (strValue.EndsWith(","))
+                {
+                    fixedJson = fixedJson.Replace(strValue, strValue.TrimEnd(','));
+                }
+            }
+        }
+
+        // 5. 修复特定的格式问题：如 "使用 AutoTokenizer.apply_chat_template()," 这样的字符串
+        fixedJson = System.Text.RegularExpressions.Regex.Replace(fixedJson, @"""([^""]*),""", match =>
+        {
+            var str = match.Groups[1].Value;
+            if (str.EndsWith(","))
+            {
+                return $"\"{str.TrimEnd(',')}\"";
+            }
+            return match.Value;
+        });
+
+        // 6. 修复可能导致解析错误的特殊字符
+        // 移除或替换某些可能导致解析问题的字符
+        var invalidChars = new[] { '\u0000', '\u001F', '\u007F', '\u0080', '\u009F' };
+        foreach (var invalidChar in invalidChars)
+        {
+            fixedJson = fixedJson.Replace(invalidChar.ToString(), "");
+        }
+
+        // 7. 修复字符串中的换行符，确保它们被正确转义
+        fixedJson = fixedJson.Replace("\r\n", "\\n").Replace("\n", "\\n").Replace("\r", "\\n");
+
+        // 8. 移除字符串首尾的空格
+        fixedJson = System.Text.RegularExpressions.Regex.Replace(fixedJson, @"""[ \t]*(.*?)[ \t]*""", "\"$1\"");
+
+        // 9. 确保所有的键和字符串值都有引号
+        // 简单的检查，确保常见的键都有引号
+        var commonKeys = new[] { "schema_version", "knowledge_points", "title", "type", "aliases", "chapter_path", "importance", "summary" };
+        foreach (var key in commonKeys)
+        {
+            // 简化的正则表达式，避免转义问题
+            fixedJson = System.Text.RegularExpressions.Regex.Replace(fixedJson, "(?<!\")" + key + "(?![\"\\[:}])", "\"" + key + "\"");
+        }
+
+        return fixedJson;
     }
 
     private static T CreateFallbackResponse<T>() where T : class

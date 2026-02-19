@@ -4,7 +4,6 @@ namespace ASimpleTutor.Core.Interfaces;
 
 /// <summary>
 /// 学习内容生成服务接口
-/// 负责为每个知识点生成学习内容（精要速览、分层内容、幻灯片卡片）
 /// </summary>
 public interface ILearningContentGenerator
 {

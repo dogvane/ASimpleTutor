@@ -11,6 +11,11 @@ public class KnowledgeSystem
     public string BookHubId { get; set; } = string.Empty;
 
     /// <summary>
+    /// 文档列表
+    /// </summary>
+    public List<Document> Documents { get; set; } = new List<Document>();
+
+    /// <summary>
     /// 知识点列表
     /// </summary>
     public List<KnowledgePoint> KnowledgePoints { get; set; } = new();
@@ -45,6 +50,11 @@ public class KnowledgeTreeNode
     /// 标题路径（完整章节路径）
     /// </summary>
     public List<string> HeadingPath { get; set; } = new();
+
+    /// <summary>
+    /// 文档文件路径
+    /// </summary>
+    public string FilePath { get; set; } = string.Empty;
 
     /// <summary>
     /// 关联的知识点（可能为 null，仅叶子节点有知识点）

@@ -118,3 +118,19 @@ public class Section
     /// </summary>
     public bool IsExcluded { get; set; } = false;
 }
+
+/// <summary>
+/// 行号范围
+/// </summary>
+public class LineRange
+{
+    /// <summary>
+    /// 起始行
+    /// </summary>
+    public int Start { get; set; }
+
+    /// <summary>
+    /// 结束行
+    /// </summary>
+    public int End { get; set; }
+}

@@ -45,6 +45,11 @@ public class KnowledgePoint
     public float Importance { get; set; }
 
     /// <summary>
+    /// 知识点关系（父子、关联、依赖等）
+    /// </summary>
+    public List<KnowledgePointRelationship> Relationships { get; set; } = new();
+
+    /// <summary>
     /// 预生成的学习内容（定义、要点、误区等）
     /// </summary>
     public Summary? Summary { get; set; }
@@ -497,4 +502,246 @@ public class LearningProgress
     /// 已完成的幻灯片 ID 列表
     /// </summary>
     public List<string>? CompletedSlideIds { get; set; }
+}
+
+/// <summary>
+/// 知识点关系
+/// </summary>
+public class KnowledgePointRelationship
+{
+    /// <summary>
+    /// 目标知识点 ID
+    /// </summary>
+    public string TargetKpId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 关系类型
+    /// </summary>
+    [JsonConverter(typeof(StringEnumConverter))]
+    public RelationshipType Type { get; set; } = RelationshipType.Related;
+
+    /// <summary>
+    /// 关系权重（0.0~1.0，值越大关系越密切）
+    /// </summary>
+    public float Weight { get; set; } = 0.5f;
+}
+
+/// <summary>
+/// 知识点关系类型
+/// </summary>
+public enum RelationshipType
+{
+    /// <summary>
+    /// 父知识点
+    /// </summary>
+    Parent,
+
+    /// <summary>
+    /// 子知识点
+    /// </summary>
+    Child,
+
+    /// <summary>
+    /// 关联知识点
+    /// </summary>
+    Related,
+
+    /// <summary>
+    /// 依赖关系
+    /// </summary>
+    Depends,
+
+    /// <summary>
+    /// 对比关系
+    /// </summary>
+    Contrast
+}
+
+/// <summary>
+/// 章节学习包（包含PPT内容和口播说明）
+/// </summary>
+public class ChapterLearningPack
+{
+    /// <summary>
+    /// 章节 ID
+    /// </summary>
+    public string ChapterId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 章节标题
+    /// </summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>
+    /// PPT页面列表
+    /// </summary>
+    public List<PPTPage> PptPages { get; set; } = new();
+
+    /// <summary>
+    /// 章节习题
+    /// </summary>
+    public Exercise Exercise { get; set; } = new Exercise();
+}
+
+/// <summary>
+/// PPT页面
+/// </summary>
+public class PPTPage
+{
+    /// <summary>
+    /// 页面唯一标识符
+    /// </summary>
+    public string PageId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 所属章节 ID
+    /// </summary>
+    public string ChapterId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 页面类型
+    /// </summary>
+    [JsonConverter(typeof(StringEnumConverter))]
+    public PPTPageType Type { get; set; } = PPTPageType.Cover;
+
+    /// <summary>
+    /// 页面顺序（用于排序）
+    /// </summary>
+    public int Order { get; set; }
+
+    /// <summary>
+    /// 页面标题
+    /// </summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>
+    /// HTML 内容
+    /// </summary>
+    public string HtmlContent { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 口语化讲解脚本（用于 TTS）
+    /// </summary>
+    public string? SpeechScript { get; set; }
+
+    /// <summary>
+    /// 原文引用标记列表
+    /// </summary>
+    public List<SourceReference> SourceReferences { get; set; } = new();
+
+    /// <summary>
+    /// 知识图谱数据
+    /// </summary>
+    public KnowledgeGraphData KnowledgeGraphData { get; set; } = new KnowledgeGraphData();
+}
+
+/// <summary>
+/// PPT页面类型
+/// </summary>
+[JsonConverter(typeof(StringEnumConverter))]
+public enum PPTPageType
+{
+    /// <summary>
+    /// 封面/介绍
+    /// </summary>
+    Cover,
+
+    /// <summary>
+    /// 内容讲解
+    /// </summary>
+    Content,
+
+    /// <summary>
+    /// 深入分析
+    /// </summary>
+    Deep,
+
+    /// <summary>
+    /// 知识关联
+    /// </summary>
+    Relations,
+
+    /// <summary>
+    /// 总结回顾
+    /// </summary>
+    Summary
+}
+
+/// <summary>
+/// 知识图谱数据
+/// </summary>
+public class KnowledgeGraphData
+{
+    /// <summary>
+    /// 相关知识点
+    /// </summary>
+    public List<RelatedKnowledgePoint> RelatedPoints { get; set; } = new();
+}
+
+/// <summary>
+/// 相关知识点
+/// </summary>
+public class RelatedKnowledgePoint
+{
+    /// <summary>
+    /// 知识点 ID
+    /// </summary>
+    public string PointId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 知识点标题
+    /// </summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 关系类型
+    /// </summary>
+    public string Relationship { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 关系权重（0.0~1.0）
+    /// </summary>
+    public float Weight { get; set; }
+}
+
+/// <summary>
+/// TTS口播说明
+/// </summary>
+public class TTSScript
+{
+    /// <summary>
+    /// 章节 ID
+    /// </summary>
+    public string ChapterId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 书籍中心 ID
+    /// </summary>
+    public string BookHubId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 页面脚本列表
+    /// </summary>
+    public List<PageScript> Scripts { get; set; } = new();
+}
+
+/// <summary>
+/// 页面脚本
+/// </summary>
+public class PageScript
+{
+    /// <summary>
+    /// 页面 ID
+    /// </summary>
+    public string PageId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 口播脚本文本
+    /// </summary>
+    public string SpeechScript { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 预计播放时长（秒）
+    /// </summary>
+    public float Duration { get; set; }
 }

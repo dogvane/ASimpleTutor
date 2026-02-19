@@ -17,6 +17,12 @@ export const searchChapters = (q, limit = 20) =>
 export const getKnowledgePoints = (chapterId) =>
   apiFetch(`/chapters/knowledge-points?chapterId=${encodeURIComponent(chapterId)}`)
 
+// 新增：生成章节学习内容
+export const generateChapterContent = (chapterId) =>
+  apiFetch(`/chapters/generate-content?chapterId=${encodeURIComponent(chapterId)}`, {
+    method: 'POST',
+  })
+
 export const getOverview = (kpId) =>
   apiFetch(`/knowledge-points/overview?kpId=${encodeURIComponent(kpId)}`)
 

@@ -333,6 +333,8 @@ public class ExerciseServiceTests
         {
             KpId = "kp_001",
             BookHubId = "book_001",
+            DocId = "doc_001", // 添加 DocId 属性
+            SectionId = "section_001", // 添加 SectionId 属性
             Title = "什么是 Markdown",
             Aliases = new List<string> { "MD", "标记语言" },
             ChapterPath = new List<string> { "第一章", "1.1 基础概念" },
@@ -375,7 +377,7 @@ public class ExerciseServiceTests
             {
                 DocId = "doc_001",
                 BookHubId = "book_001",
-                Path = "/docs/ch01.md",
+                Path = Path.Combine(AppContext.BaseDirectory, "Data", "Files", "FileDiscovery", "normal_files", "chapter01.md"),
                 Title = "第一章 基础概念",
                 Sections = new List<Section>
                 {
