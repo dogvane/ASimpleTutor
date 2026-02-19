@@ -82,11 +82,11 @@ public class KnowledgeSystemStore
 
         try
         {
-            // 并行保存知识体系和文档章节信息
-            var saveKnowledgeTask = SaveKnowledgeSystemAsync(knowledgeSystem, directory, cancellationToken);
+            // 并行保存知识点、文档章节信息
+            var saveKnowledgePointsTask = SaveKnowledgePointsAsync(knowledgeSystem, directory, cancellationToken);
             var saveDocumentsTask = SaveDocumentsAsync(documents, knowledgeSystem.BookHubId, directory, cancellationToken);
 
-            await Task.WhenAll(saveKnowledgeTask, saveDocumentsTask);
+            await Task.WhenAll(saveKnowledgePointsTask, saveDocumentsTask);
 
             _logger.LogInformation("知识系统保存完成: {BookHubId}, 知识点: {KpCount}, 文档: {DocCount}",
                 knowledgeSystem.BookHubId,
@@ -117,20 +117,28 @@ public class KnowledgeSystemStore
 
         try
         {
-            // 并行加载知识体系和文档章节信息
-            var loadKnowledgeTask = LoadKnowledgeSystemAsync(directory, cancellationToken);
+            // 并行加载知识点和文档章节信息
+            var loadKnowledgePointsTask = LoadKnowledgePointsAsync(directory, cancellationToken);
             var loadDocumentsTask = LoadDocumentsAsync(directory, cancellationToken);
 
-            await Task.WhenAll(loadKnowledgeTask, loadDocumentsTask);
+            await Task.WhenAll(loadKnowledgePointsTask, loadDocumentsTask);
 
-            var knowledgeSystem = loadKnowledgeTask.Result;
+            var knowledgePoints = loadKnowledgePointsTask.Result;
             var documents = loadDocumentsTask.Result;
 
-            if (knowledgeSystem == null)
+            if (knowledgePoints == null)
             {
-                _logger.LogWarning("知识系统文件加载失败: {BookHubId}", bookHubId);
+                _logger.LogWarning("知识点文件加载失败: {BookHubId}", bookHubId);
                 return (null, documents);
             }
+
+            // 构建知识系统
+            var knowledgeSystem = new KnowledgeSystem
+            {
+                BookHubId = bookHubId,
+                KnowledgePoints = knowledgePoints,
+                Tree = null // 稍后重建
+            };
 
             // 重建知识树
             var treeBuilder = new KnowledgeTreeBuilder();
@@ -182,9 +190,9 @@ public class KnowledgeSystemStore
     public bool Exists(string bookHubId)
     {
         var directory = Path.Combine(_storePath, bookHubId);
-        var knowledgeFile = Path.Combine(directory, "knowledge-system.json");
+        var knowledgePointsFile = Path.Combine(directory, "knowledge-points.json");
         var documentsFile = Path.Combine(directory, "documents.json");
-        return File.Exists(knowledgeFile) && File.Exists(documentsFile);
+        return File.Exists(knowledgePointsFile) && File.Exists(documentsFile);
     }
 
     /// <summary>
@@ -193,18 +201,17 @@ public class KnowledgeSystemStore
     public bool CheckStorageIntegrity(string bookHubId)
     {
         var directory = Path.Combine(_storePath, bookHubId);
-        
+
         if (!Directory.Exists(directory))
         {
             return false;
         }
 
-        var knowledgeFile = Path.Combine(directory, "knowledge-system.json");
+        var knowledgePointsFile = Path.Combine(directory, "knowledge-points.json");
         var documentsFile = Path.Combine(directory, "documents.json");
-        var snippetsFile = Path.Combine(directory, "snippets.json");
 
         // 检查核心文件是否存在
-        return File.Exists(knowledgeFile) && File.Exists(documentsFile);
+        return File.Exists(knowledgePointsFile) && File.Exists(documentsFile);
     }
 
     /// <summary>
@@ -241,47 +248,40 @@ public class KnowledgeSystemStore
             .ToList();
     }
 
-    private async Task SaveKnowledgeSystemAsync(KnowledgeSystem knowledgeSystem, string directory, CancellationToken cancellationToken)
+    private async Task SaveKnowledgePointsAsync(KnowledgeSystem knowledgeSystem, string directory, CancellationToken cancellationToken)
     {
-        // 创建保存模型（排除 Snippets，因为它们单独保存）
-        var saveModel = new KnowledgeSystemSaveModel
+        // 创建保存模型
+        var saveModel = new KnowledgePointsSaveModel
         {
             BookHubId = knowledgeSystem.BookHubId,
             KnowledgePoints = knowledgeSystem.KnowledgePoints
         };
 
-        var filePath = Path.Combine(directory, "knowledge-system.json");
+        var filePath = Path.Combine(directory, "knowledge-points.json");
         var json = JsonConvert.SerializeObject(saveModel, Formatting.Indented);
         await File.WriteAllTextAsync(filePath, json, cancellationToken);
     }
 
-    private async Task<KnowledgeSystem?> LoadKnowledgeSystemAsync(string directory, CancellationToken cancellationToken)
+    private async Task<List<KnowledgePoint>?> LoadKnowledgePointsAsync(string directory, CancellationToken cancellationToken)
     {
-        var filePath = Path.Combine(directory, "knowledge-system.json");
+        var filePath = Path.Combine(directory, "knowledge-points.json");
 
         if (!File.Exists(filePath))
         {
-            _logger.LogWarning("知识系统文件不存在: {Path}", filePath);
+            _logger.LogWarning("知识点文件不存在: {Path}", filePath);
             return null;
         }
 
         var json = await File.ReadAllTextAsync(filePath, cancellationToken);
-        var saveModel = JsonConvert.DeserializeObject<KnowledgeSystemSaveModel>(json);
+        var saveModel = JsonConvert.DeserializeObject<KnowledgePointsSaveModel>(json);
 
         if (saveModel == null)
         {
             return null;
         }
 
-        var knowledgeSystem = new KnowledgeSystem
-        {
-            BookHubId = saveModel.BookHubId,
-            KnowledgePoints = saveModel.KnowledgePoints ?? new List<KnowledgePoint>(),
-            Tree = null // 重建
-        };
-
         // 为每个知识点设置 BookHubId（如果为空）
-        foreach (var kp in knowledgeSystem.KnowledgePoints)
+        foreach (var kp in saveModel.KnowledgePoints)
         {
             if (string.IsNullOrEmpty(kp.BookHubId))
             {
@@ -289,7 +289,7 @@ public class KnowledgeSystemStore
             }
         }
 
-        return knowledgeSystem;
+        return saveModel.KnowledgePoints;
     }
 
     private async Task SaveDocumentsAsync(List<Document>? documents, string bookHubId, string directory, CancellationToken cancellationToken)
@@ -327,9 +327,9 @@ public class KnowledgeSystemStore
 }
 
 /// <summary>
-/// 知识系统保存模型
+/// 知识点保存模型
 /// </summary>
-internal class KnowledgeSystemSaveModel
+internal class KnowledgePointsSaveModel
 {
     [JsonProperty("book_hub_id")]
     public string BookHubId { get; set; } = string.Empty;

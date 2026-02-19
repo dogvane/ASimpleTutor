@@ -24,32 +24,36 @@ public class ExercisesController : ControllerBase
         }
     }
 
-    private IActionResult? ValidateRequest(string kpId, out KnowledgePoint? kp)
+    private bool ValidateRequest(string kpId, out KnowledgePoint? kp, out IActionResult? errorResult)
     {
         kp = null;
-        
+        errorResult = null;
+
         if (_knowledgeSystem == null)
         {
-            return NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
+            errorResult = NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
+            return false;
         }
 
         if (string.IsNullOrEmpty(kpId))
         {
-            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "kpId 不能为空" } });
+            errorResult = BadRequest(new { error = new { code = "BAD_REQUEST", message = "kpId 不能为空" } });
+            return false;
         }
 
         kp = _knowledgeSystem.KnowledgePoints.FirstOrDefault(p => p.KpId == kpId);
         if (kp == null)
         {
-            return NotFound(new { error = new { code = "KP_NOT_FOUND", message = $"知识点不存在: {kpId}" } });
+            errorResult = NotFound(new { error = new { code = "KP_NOT_FOUND", message = $"知识点不存在: {kpId}" } });
+            return false;
         }
 
-        return null;
+        return true;
     }
 
-    private IActionResult? ValidateRequest(string kpId)
+    private bool ValidateRequest(string kpId, out IActionResult? errorResult)
     {
-        return ValidateRequest(kpId, out _);
+        return ValidateRequest(kpId, out _, out errorResult);
     }
 
     /// <summary>
@@ -61,8 +65,7 @@ public class ExercisesController : ControllerBase
         [FromServices] IServiceProvider serviceProvider,
         [FromServices] ILogger<ExercisesController> logger)
     {
-        var validationResult = ValidateRequest(kpId, out var kp);
-        if (validationResult != null) return validationResult;
+        if (!ValidateRequest(kpId, out var kp, out var errorResult)) return errorResult!;
 
         lock (_lock)
         {
@@ -77,7 +80,7 @@ public class ExercisesController : ControllerBase
         try
         {
             var generator = serviceProvider.GetRequiredService<IExerciseGenerator>();
-            var exercises = await generator.GenerateAsync(kp, 3);
+            var exercises = await generator.GenerateAsync(kp!, 3);
 
             lock (_lock)
             {
@@ -102,8 +105,7 @@ public class ExercisesController : ControllerBase
     [HttpGet("knowledge-points/exercises")]
     public IActionResult GetExercises([FromQuery] string kpId)
     {
-        var validationResult = ValidateRequest(kpId, out var kp);
-        if (validationResult != null) return validationResult;
+        if (!ValidateRequest(kpId, out var kp, out var errorResult)) return errorResult!;
 
         List<Exercise> exercises;
         lock (_lock)

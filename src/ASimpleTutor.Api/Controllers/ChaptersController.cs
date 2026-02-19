@@ -30,6 +30,197 @@ public class ChaptersController : ControllerBase
     }
 
     /// <summary>
+    /// 获取章节树
+    /// </summary>
+    [HttpGet]
+    public IActionResult GetChapters()
+    {
+        if (_knowledgeSystem == null)
+        {
+            return NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
+        }
+
+        // 如果有知识点树，使用知识点树
+        if (_knowledgeSystem.Tree != null)
+        {
+            var chapters = BuildChapterTree(_knowledgeSystem.Tree);
+            return Ok(new { items = chapters });
+        }
+
+        // 如果没有知识点树但有文档，从文档构建章节树
+        if (_knowledgeSystem.Documents.Count > 0)
+        {
+            System.Console.WriteLine($"[DEBUG] Building chapter tree from {_knowledgeSystem.Documents.Count} documents");
+            var chapters = BuildChapterTreeFromDocuments(_knowledgeSystem.Documents);
+            System.Console.WriteLine($"[DEBUG] Built {chapters.Count} chapter nodes");
+            return Ok(new { items = chapters });
+        }
+
+        // 都没有，返回空数组
+        System.Console.WriteLine("[DEBUG] No tree and no documents, returning empty array");
+        return Ok(new { items = new List<ChapterTreeNode>() });
+    }
+
+    /// <summary>
+    /// 搜索章节
+    /// </summary>
+    [HttpGet("search")]
+    public IActionResult SearchChapters([FromQuery] string q, [FromQuery] int? limit)
+    {
+        if (_knowledgeSystem == null)
+        {
+            return NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
+        }
+
+        if (string.IsNullOrWhiteSpace(q))
+        {
+            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "搜索关键词不能为空" } });
+        }
+
+        var query = q.ToLower();
+        var results = new List<object>();
+        int count = 0;
+
+        CollectSearchResults(_knowledgeSystem.Tree, query, results, limit ?? 20, ref count);
+
+        return Ok(new { items = results, total = results.Count });
+    }
+
+    /// <summary>
+    /// 获取章节下的知识点列表
+    /// </summary>
+    [HttpGet("knowledge-points")]
+    public IActionResult GetChapterKnowledgePoints([FromQuery] string chapterId)
+    {
+        if (_knowledgeSystem == null)
+        {
+            return NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
+        }
+
+        if (string.IsNullOrEmpty(chapterId))
+        {
+            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "chapterId 不能为空" } });
+        }
+
+        var kps = CollectKnowledgePoints(_knowledgeSystem.Tree, chapterId)
+            .Select(kp => new
+            {
+                kpId = kp.KpId,
+                kp.Title,
+                Summary = string.Empty
+            })
+            .ToList();
+
+        return Ok(new { items = kps });
+    }
+
+    private static List<ChapterTreeNode> BuildChapterTree(KnowledgeTreeNode? node)
+    {
+        if (node == null)
+            return new List<ChapterTreeNode>();
+
+        var result = new List<ChapterTreeNode>();
+
+        if (node.Children.Count == 0)
+        {
+            if (node.KnowledgePoint != null)
+            {
+                result.Add(new ChapterTreeNode
+                {
+                    Id = node.Id,
+                    Title = node.Title,
+                    Level = node.HeadingPath.Count,
+                    Expanded = false,
+                    Children = new List<ChapterTreeNode>()
+                });
+            }
+        }
+        else
+        {
+            foreach (var child in node.Children)
+            {
+                result.Add(new ChapterTreeNode
+                {
+                    Id = child.Id,
+                    Title = child.Title,
+                    Level = child.HeadingPath.Count,
+                    Expanded = child.HeadingPath.Count <= 1,
+                    Children = BuildChapterTree(child)
+                });
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 从文档构建章节树
+    /// </summary>
+    private static List<ChapterTreeNode> BuildChapterTreeFromDocuments(List<Document> documents)
+    {
+        var result = new List<ChapterTreeNode>();
+
+        foreach (var doc in documents)
+        {
+            // 从文档的 Sections 构建章节树
+            BuildChapterTreeFromSections(doc.Sections, result, doc.Path);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 从章节列表递归构建章节树
+    /// </summary>
+    private static void BuildChapterTreeFromSections(List<Section> sections, List<ChapterTreeNode> result, string filePath)
+    {
+        foreach (var section in sections)
+        {
+            var node = new ChapterTreeNode
+            {
+                Id = section.SectionId,
+                Title = section.HeadingPath.Count > 0 ? section.HeadingPath.Last() : section.SectionId,
+                Level = section.HeadingPath.Count,
+                Expanded = section.HeadingPath.Count <= 1,
+                Children = new List<ChapterTreeNode>()
+            };
+
+            // 递归处理子章节
+            if (section.SubSections.Count > 0)
+            {
+                BuildChapterTreeFromSections(section.SubSections, node.Children, filePath);
+            }
+
+            result.Add(node);
+        }
+    }
+
+    private static void CollectSearchResults(KnowledgeTreeNode? node, string query, List<object> results, int limit, ref int count)
+    {
+        if (node == null || count >= limit)
+            return;
+
+        if (node.Title.ToLower().Contains(query))
+        {
+            results.Add(new
+            {
+                id = node.Id,
+                title = node.Title,
+                level = node.HeadingPath.Count,
+                parentId = node.HeadingPath.Count > 1 ? node.HeadingPath[node.HeadingPath.Count - 2] : null
+            });
+            count++;
+        }
+
+        foreach (var child in node.Children)
+        {
+            CollectSearchResults(child, query, results, limit, ref count);
+            if (count >= limit)
+                break;
+        }
+    }
+
+    /// <summary>
     /// 判断是否为排除章节（习题、小结、参考文献等）
     /// </summary>
     private static bool IsExcludedChapter(string title)

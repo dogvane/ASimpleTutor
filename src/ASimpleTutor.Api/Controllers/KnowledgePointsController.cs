@@ -43,32 +43,36 @@ public class KnowledgePointsController : ControllerBase
         }
     }
 
-    private IActionResult? ValidateRequest(string kpId, out KnowledgePoint? kp)
+    private bool ValidateRequest(string kpId, out KnowledgePoint? kp, out IActionResult? errorResult)
     {
         kp = null;
-        
+        errorResult = null;
+
         if (_knowledgeSystem == null)
         {
-            return NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
+            errorResult = NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
+            return false;
         }
 
         if (string.IsNullOrEmpty(kpId))
         {
-            return BadRequest(new { error = new { code = "BAD_REQUEST", message = "kpId 不能为空" } });
+            errorResult = BadRequest(new { error = new { code = "BAD_REQUEST", message = "kpId 不能为空" } });
+            return false;
         }
 
         kp = _knowledgeSystem.KnowledgePoints.FirstOrDefault(p => p.KpId == kpId);
         if (kp == null)
         {
-            return NotFound(new { error = new { code = "KP_NOT_FOUND", message = $"知识点不存在: {kpId}" } });
+            errorResult = NotFound(new { error = new { code = "KP_NOT_FOUND", message = $"知识点不存在: {kpId}" } });
+            return false;
         }
 
-        return null;
+        return true;
     }
 
-    private IActionResult? ValidateRequest(string kpId)
+    private bool ValidateRequest(string kpId, out IActionResult? errorResult)
     {
-        return ValidateRequest(kpId, out _);
+        return ValidateRequest(kpId, out _, out errorResult);
     }
 
     /// <summary>
@@ -77,12 +81,11 @@ public class KnowledgePointsController : ControllerBase
     [HttpGet("overview")]
     public IActionResult GetOverview([FromQuery] string kpId)
     {
-        var validationResult = ValidateRequest(kpId, out var kp);
-        if (validationResult != null) return validationResult;
+        if (!ValidateRequest(kpId, out var kp, out var errorResult)) return errorResult!;
 
         return Ok(new
         {
-            id = kp.KpId,
+            id = kp!.KpId,
             title = kp.Title,
             overview = kp.Summary ?? new Summary { Definition = "暂无内容" },
             generatedAt = DateTime.UtcNow
@@ -99,16 +102,16 @@ public class KnowledgePointsController : ControllerBase
         [FromServices] KnowledgeSystemStore store,
         CancellationToken cancellationToken)
     {
-        var validationResult = ValidateRequest(kpId, out var kp);
-        if (validationResult != null) return validationResult;
+        if (!ValidateRequest(kpId, out var kp, out var errorResult)) return errorResult!;
 
         // 从 KnowledgeSystemStore 加载文档
-        var loadResult = await store.LoadAsync(_knowledgeSystem.BookHubId, cancellationToken);
-        if (loadResult.Documents == null || loadResult.Documents.Count == 0)
+        var loadResult = await store.LoadAsync(_knowledgeSystem!.BookHubId, cancellationToken);
+        var documents = loadResult.Documents ?? new List<Document>();
+        if (documents.Count == 0)
         {
             return Ok(new
             {
-                id = kp.KpId,
+                id = kp!.KpId,
                 title = kp.Title,
                 sourceItems = new List<object>()
             });
@@ -116,9 +119,9 @@ public class KnowledgePointsController : ControllerBase
 
         // 从 Document 中获取原文片段
         var sourceItems = new List<object>();
-        foreach (var doc in loadResult.Documents)
+        foreach (var doc in documents)
         {
-            if (doc.DocId != kp.DocId)
+            if (doc.DocId != kp!.DocId)
             {
                 continue;
             }
@@ -131,7 +134,7 @@ public class KnowledgePointsController : ControllerBase
                     var lines = await System.IO.File.ReadAllLinesAsync(doc.Path, cancellationToken);
 
                     // 根据章节路径查找对应的章节
-                    var section = doc.FindSectionById(kp.SectionId);
+                    var section = doc.FindSectionById(kp!.SectionId);
                     if (section != null && section.StartLine >= 0 && section.EndLine <= lines.Length)
                     {
                         var content = string.Join("\n", lines.Skip(section.StartLine).Take(section.EndLine - section.StartLine));
@@ -148,7 +151,7 @@ public class KnowledgePointsController : ControllerBase
 
         return Ok(new
         {
-            id = kp.KpId,
+            id = kp!.KpId,
             title = kp.Title,
             sourceItems
         });
@@ -159,10 +162,9 @@ public class KnowledgePointsController : ControllerBase
     [HttpGet("detailed-content")]
     public IActionResult GetDetailedContent([FromQuery] string kpId, [FromQuery] string? level)
     {
-        var validationResult = ValidateRequest(kpId, out var kp);
-        if (validationResult != null) return validationResult;
+        if (!ValidateRequest(kpId, out var kp, out var errorResult)) return errorResult!;
 
-        var levels = kp.Levels ?? new List<ContentLevel>();
+        var levels = kp!.Levels ?? new List<ContentLevel>();
         var responseLevels = new Dictionary<string, object>();
 
         // 如果 level 为空，返回所有层次
@@ -213,10 +215,9 @@ public class KnowledgePointsController : ControllerBase
         [FromServices] KnowledgeSystemStore store,
         CancellationToken cancellationToken)
     {
-        var validationResult = ValidateRequest(kpId, out var kp);
-        if (validationResult != null) return validationResult;
+        if (!ValidateRequest(kpId, out var kp, out var errorResult)) return errorResult!;
 
-        var slideCards = kp.SlideCards ?? new List<SlideCard>();
+        var slideCards = kp!.SlideCards ?? new List<SlideCard>();
         var hasChanges = false;
 
         var needsUpdateSpeechScript = slideCards.Any(sc => sc.SpeechScript == null);
@@ -263,8 +264,8 @@ public class KnowledgePointsController : ControllerBase
               var filePath = Path.Combine(env.WebRootPath, audioUrl.TrimStart('/', '\\'));
               if (!System.IO.File.Exists(filePath))
               {
-                  audioUrl = null;
-                  sc.AudioUrl = null;
+                  audioUrl = string.Empty;
+                  sc.AudioUrl = string.Empty;
               }
           }
 

@@ -4,6 +4,7 @@ using ASimpleTutor.Api.Logging;
 using ASimpleTutor.Api.Middleware;
 using ASimpleTutor.Api.Services;
 using ASimpleTutor.Core.Interfaces;
+using ASimpleTutor.Core.Models;
 using ASimpleTutor.Core.Services;
 using Microsoft.Extensions.Logging;
 using Swashbuckle.AspNetCore.SwaggerGen;
@@ -41,6 +42,8 @@ builder.Services.Configure<ASimpleTutor.Core.Configuration.SectioningOptions>(
 // 注册 Core 服务
 builder.Services.AddSingleton<ISettingsService, SettingsService>();
 builder.Services.AddSingleton<IScannerService, MarkdownScanner>();
+
+// 注册存储服务
 builder.Services.AddSingleton<KnowledgeSystemStore>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<KnowledgeSystemStore>>();
@@ -48,6 +51,14 @@ builder.Services.AddSingleton<KnowledgeSystemStore>(sp =>
     var dataDirectory = config.StoragePath ?? "datas";
     return new KnowledgeSystemStore(logger, dataDirectory);
 });
+builder.Services.AddSingleton<KnowledgeGraphStore>(sp =>
+{
+    var logger = sp.GetRequiredService<ILogger<KnowledgeGraphStore>>();
+    // 默认使用项目根目录下的 datas 目录
+    var dataDirectory = config.StoragePath ?? "datas";
+    return new KnowledgeGraphStore(logger, dataDirectory);
+});
+
 builder.Services.AddSingleton<ILLMService>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<LLMService>>();
@@ -114,14 +125,17 @@ async Task TryLoadSavedKnowledgeSystemAsync()
             var (knowledgeSystem, documents) = await store.LoadAsync(activeBookHubId);
             if (knowledgeSystem != null)
             {
+                // 设置文档列表到知识系统
+                knowledgeSystem.Documents = documents ?? new List<Document>();
+
                 AdminController.SetKnowledgeSystem(knowledgeSystem);
                 KnowledgePointsController.SetKnowledgeSystem(knowledgeSystem);
                 ChaptersController.SetKnowledgeSystem(knowledgeSystem);
                 ExercisesController.SetKnowledgeSystem(knowledgeSystem);
                 ProgressController.SetKnowledgeSystem(knowledgeSystem);
-                logger.LogInformation("知识系统加载完成，共 {Count} 个知识点，{DocCount} 个文档", 
-                    knowledgeSystem.KnowledgePoints.Count, 
-                    documents?.Count ?? 0);
+                logger.LogInformation("知识系统加载完成，共 {Count} 个知识点，{DocCount} 个文档",
+                    knowledgeSystem.KnowledgePoints.Count,
+                    knowledgeSystem.Documents.Count);
             }
         }
         else
