@@ -260,13 +260,7 @@ public class LearningGenerator : ILearningGenerator
                     Type = ConvertSlideType(dto.Type),
                     Order = dto.Order,
                     Title = dto.Title ?? string.Empty,
-                    HtmlContent = dto.Content ?? string.Empty,
-                    SourceReferences = new List<SourceReference>(),
-                    Config = new SlideConfig
-                    {
-                        AllowSkip = dto.Config?.AllowSkip ?? true,
-                        RequireComplete = dto.Config?.RequireComplete ?? false
-                    }
+                    HtmlContent = dto.Content ?? string.Empty
                 })
                 .ToList() ?? new List<SlideCard>()
         };

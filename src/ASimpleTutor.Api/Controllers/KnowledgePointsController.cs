@@ -316,17 +316,7 @@ public class KnowledgePointsController : ControllerBase
              htmlContent = sc.HtmlContent,
              speechScript = sc.SpeechScript,
              audioUrl = audioUrl,
-             speed = ttsSpeed,
-             sourceReferences = sc.SourceReferences.Select(sr => new
-             {
-                 snippetId = sr.SnippetId,
-                 filePath = sr.FilePath,
-                 headingPath = sr.HeadingPath,
-                 startLine = sr.StartLine,
-                 endLine = sr.EndLine,
-                 content = sr.Content
-             }),
-             config = sc.Config
+             speed = ttsSpeed
          };
      }
 

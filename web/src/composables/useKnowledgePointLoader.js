@@ -101,12 +101,7 @@ export function useKnowledgePointLoader(state) {
             title: sc.title,
             speechScript: sc.speechScript,
             audioUrl: sc.audioUrl,
-            speed: sc.speed || 1.0,
-            sources: sc.sourceReferences?.map(sr => ({
-              text: sr.content?.substring(0, 50) + '...',
-              fileName: sr.filePath ? sr.filePath.split('/').pop() : '',
-              ...sr
-            })) || []
+            speed: sc.speed || 1.0
           })))
         }
       } catch (error) {

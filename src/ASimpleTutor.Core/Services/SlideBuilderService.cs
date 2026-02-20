@@ -85,13 +85,7 @@ public class SlideBuilderService
             Type = SlideTypeDto.Cover,
             Order = order++,
             Title = "概览",
-            Content = content.ToString(),
-            Config = new SlideConfigDto
-            {
-                AllowSkip = true,
-                RequireComplete = false,
-                EstimatedTime = 30
-            }
+            Content = content.ToString()
         };
     }
 
@@ -116,13 +110,7 @@ public class SlideBuilderService
             Type = SlideTypeDto.Explanation,
             Order = order++,
             Title = "定义",
-            Content = content.ToString(),
-            Config = new SlideConfigDto
-            {
-                AllowSkip = true,
-                RequireComplete = false,
-                EstimatedTime = 45
-            }
+            Content = content.ToString()
         };
     }
 
@@ -147,13 +135,7 @@ public class SlideBuilderService
             Type = SlideTypeDto.Detail,
             Order = order++,
             Title = "核心要点",
-            Content = content.ToString(),
-            Config = new SlideConfigDto
-            {
-                AllowSkip = true,
-                RequireComplete = false,
-                EstimatedTime = 60
-            }
+            Content = content.ToString()
         };
     }
 
@@ -178,13 +160,7 @@ public class SlideBuilderService
             Type = SlideTypeDto.Detail,
             Order = order++,
             Title = "常见误区",
-            Content = content.ToString(),
-            Config = new SlideConfigDto
-            {
-                AllowSkip = true,
-                RequireComplete = false,
-                EstimatedTime = 45
-            }
+            Content = content.ToString()
         };
     }
 
@@ -239,13 +215,7 @@ public class SlideBuilderService
             Order = order++,
             Title = "知识关联",
             Content = content.ToString(),
-            KpLinks = kpLinks,
-            Config = new SlideConfigDto
-            {
-                AllowSkip = true,
-                RequireComplete = false,
-                EstimatedTime = 45
-            }
+            KpLinks = kpLinks
         };
     }
 
@@ -272,13 +242,7 @@ public class SlideBuilderService
             Type = SlideTypeDto.Summary,
             Order = order++,
             Title = "总结",
-            Content = content.ToString(),
-            Config = new SlideConfigDto
-            {
-                AllowSkip = true,
-                RequireComplete = false,
-                EstimatedTime = 60
-            }
+            Content = content.ToString()
         };
     }
 
@@ -287,8 +251,6 @@ public class SlideBuilderService
     /// </summary>
     private SlideMetaDto BuildMeta(List<SlideCardDto> slides, KnowledgePoint kp)
     {
-        var totalEstimatedTime = slides.Sum(s => s.Config.EstimatedTime);
-
         // 根据知识点重要性判断难度
         var difficulty = kp.Importance switch
         {
@@ -300,7 +262,7 @@ public class SlideBuilderService
         return new SlideMetaDto
         {
             TotalSlides = slides.Count,
-            EstimatedTime = totalEstimatedTime,
+            EstimatedTime = slides.Count * 60, // 每张幻灯片默认60秒
             Difficulty = difficulty,
             GeneratedAt = DateTime.UtcNow
         };

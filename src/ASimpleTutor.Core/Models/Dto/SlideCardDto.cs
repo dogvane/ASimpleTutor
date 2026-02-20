@@ -100,12 +100,6 @@ public class SlideCardDto
     /// </summary>
     [JsonProperty("kpLinks")]
     public List<KnowledgePointLinkDto> KpLinks { get; set; } = new();
-
-    /// <summary>
-    /// 幻灯片配置
-    /// </summary>
-    [JsonProperty("config")]
-    public SlideConfigDto Config { get; set; } = new();
 }
 
 /// <summary>
@@ -179,21 +173,6 @@ public class KnowledgePointLinkDto
 
     [JsonProperty("targetTitle")]
     public string? TargetTitle { get; set; }
-}
-
-/// <summary>
-/// 幻灯片配置 DTO
-/// </summary>
-public class SlideConfigDto
-{
-    [JsonProperty("allowSkip")]
-    public bool AllowSkip { get; set; } = true;
-
-    [JsonProperty("requireComplete")]
-    public bool RequireComplete { get; set; } = false;
-
-    [JsonProperty("estimatedTime")]
-    public int EstimatedTime { get; set; } = 60; // 预计阅读时长（秒）
 }
 
 /// <summary>

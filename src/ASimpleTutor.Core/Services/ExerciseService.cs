@@ -283,8 +283,7 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
         {
             IsCorrect = isCorrect,
             Explanation = isCorrect ? "回答正确！" : $"回答错误，正确答案是 {exercise.CorrectAnswer}",
-            ReferenceAnswer = exercise.CorrectAnswer,
-            MasteryAdjustment = isCorrect ? 0.05f : -0.1f
+            ReferenceAnswer = exercise.CorrectAnswer
         });
     }
 
@@ -308,8 +307,7 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
             Explanation = isCorrect
                 ? "回答正确！"
                 : $"回答错误。正确答案包括：{exercise.CorrectAnswer}",
-            ReferenceAnswer = exercise.CorrectAnswer,
-            MasteryAdjustment = isCorrect ? 0.08f : -0.12f
+            ReferenceAnswer = exercise.CorrectAnswer
         });
     }
 
@@ -329,8 +327,7 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
         {
             IsCorrect = isCorrect,
             Explanation = isCorrect ? "回答正确！" : $"回答错误，正确答案是 {exercise.CorrectAnswer}",
-            ReferenceAnswer = exercise.CorrectAnswer,
-            MasteryAdjustment = isCorrect ? 0.05f : -0.1f
+            ReferenceAnswer = exercise.CorrectAnswer
         });
     }
 
@@ -367,13 +364,7 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
         {
             IsCorrect = response?.IsCorrect,
             Explanation = response?.Explanation ?? "请参考正确答案",
-            ReferenceAnswer = exercise.CorrectAnswer,
-            CoveredPoints = response?.CoveredPoints ?? new List<string>(),
-            MissingPoints = response?.MissingPoints ?? new List<string>(),
-            ErrorAnalysis = response?.MissingPoints.Count > 0
-                ? $"遗漏要点：{string.Join(", ", response.MissingPoints)}"
-                : null,
-            MasteryAdjustment = isCorrect ? 0.08f : -0.15f
+            ReferenceAnswer = exercise.CorrectAnswer
         };
     }
 
@@ -394,7 +385,6 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
             {
                 existingRecord.ErrorCount++;
                 existingRecord.UserAnswer = userAnswer;
-                existingRecord.ErrorAnalysis = feedback.ErrorAnalysis;
             }
             else
             {
@@ -406,7 +396,6 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
                     KpId = exercise.KpId,
                     UserAnswer = userAnswer,
                     CorrectAnswer = exercise.CorrectAnswer,
-                    ErrorAnalysis = feedback.ErrorAnalysis,
                     CreatedAt = DateTime.UtcNow,
                     IsResolved = false,
                     ErrorCount = 1
@@ -456,14 +445,17 @@ public class ExerciseService : IExerciseGenerator, IExerciseFeedback
         if (feedbacks.Count == 0)
             return currentMastery;
 
-        var totalAdjustment = feedbacks
-            .Where(f => f.MasteryAdjustment.HasValue)
-            .Sum(f => f.MasteryAdjustment!.Value);
+        // 简化的掌握度计算：基于正确率
+        var correctCount = feedbacks.Count(f => f.IsCorrect == true);
+        var correctRate = (float)correctCount / feedbacks.Count;
+
+        // 正确率越高，掌握度提升越多
+        var adjustment = (correctRate - 0.5f) * 0.3f;
 
         // 限制最大变化幅度
         var maxChange = 0.2f;
-        var adjustment = Math.Clamp(totalAdjustment, -maxChange, maxChange);
+        var finalAdjustment = Math.Clamp(adjustment, -maxChange, maxChange);
 
-        return Math.Clamp(currentMastery + adjustment, 0f, 1f);
+        return Math.Clamp(currentMastery + finalAdjustment, 0f, 1f);
     }
 }

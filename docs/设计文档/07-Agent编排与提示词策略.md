@@ -33,8 +33,6 @@
 ### 2.4 Retrieval Plugin (RAG)
 - **Native Function**: `SearchVectors`
   - 封装向量数据库查询。
-- **Native Function**: `GetSourceSnippet`
-  - 封装文件读取。
 
 ## 3. 提示词工程 (Prompt Engineering)
 
@@ -55,7 +53,7 @@
 
 ### 4.1 简单任务 (Pipeline)
 直接串联 Function。
-e.g. `SearchVectors` -> `GetSourceSnippet` -> `ExplainConcept`.
+e.g. `SearchVectors` -> `ExplainConcept`.
 
 ### 4.2 复杂任务 (Planner)
 对于模糊指令 "我要掌握这个概念"，由 SequentialPlanner 生成计划：

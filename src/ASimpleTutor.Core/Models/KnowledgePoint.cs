@@ -45,11 +45,6 @@ public class KnowledgePoint
     public float Importance { get; set; }
 
     /// <summary>
-    /// 知识点关系（父子、关联、依赖等）
-    /// </summary>
-    public List<KnowledgePointRelationship> Relationships { get; set; } = new();
-
-    /// <summary>
     /// 预生成的学习内容（定义、要点、误区等）
     /// </summary>
     public Summary? Summary { get; set; }
@@ -166,21 +161,6 @@ public class SlideCard
     /// 口语化讲解脚本（用于 TTS）
     /// </summary>
     public string? SpeechScript { get; set; }
-
-    /// <summary>
-    /// 原文引用标记列表
-    /// </summary>
-    public List<SourceReference> SourceReferences { get; set; } = new();
-
-    /// <summary>
-    /// 卡片配置
-    /// </summary>
-    public SlideConfig? Config { get; set; }
-
-    /// <summary>
-    /// 关联的习题（仅 Quiz 类型卡片有）
-    /// </summary>
-    public List<Exercise>? Exercises { get; set; }
 }
 
 /// <summary>
@@ -228,73 +208,6 @@ public enum SlideType
     /// 总结回顾
     /// </summary>
     Summary
-}
-
-/// <summary>
-/// 原文引用标记
-/// </summary>
-public class SourceReference
-{
-    /// <summary>
-    /// 引用的原文片段 ID
-    /// </summary>
-    public string SnippetId { get; set; } = string.Empty;
-
-    /// <summary>
-    /// 原文文件路径
-    /// </summary>
-    public string FilePath { get; set; } = string.Empty;
-
-    /// <summary>
-    /// 原文标题路径
-    /// </summary>
-    public List<string> HeadingPath { get; set; } = new();
-
-    /// <summary>
-    /// 行号范围（起始行）
-    /// </summary>
-    public int StartLine { get; set; }
-
-    /// <summary>
-    /// 行号范围（结束行）
-    /// </summary>
-    public int EndLine { get; set; }
-
-    /// <summary>
-    /// 引用的文本内容
-    /// </summary>
-    public string Content { get; set; } = string.Empty;
-
-    /// <summary>
-    /// 引用在卡片中的位置（用于高亮定位）
-    /// </summary>
-    public string? Position { get; set; }
-}
-
-/// <summary>
-/// 幻灯片配置
-/// </summary>
-public class SlideConfig
-{
-    /// <summary>
-    /// 是否允许跳过
-    /// </summary>
-    public bool AllowSkip { get; set; } = true;
-
-    /// <summary>
-    /// 是否需要完成此页才能继续
-    /// </summary>
-    public bool RequireComplete { get; set; } = false;
-
-    /// <summary>
-    /// 语音文件路径（预生成的 TTS）
-    /// </summary>
-    public string? AudioPath { get; set; }
-
-    /// <summary>
-    /// 自动播放语音
-    /// </summary>
-    public bool AutoPlayAudio { get; set; } = false;
 }
 
 /// <summary>
@@ -502,59 +415,6 @@ public class LearningProgress
     /// 已完成的幻灯片 ID 列表
     /// </summary>
     public List<string>? CompletedSlideIds { get; set; }
-}
-
-/// <summary>
-/// 知识点关系
-/// </summary>
-public class KnowledgePointRelationship
-{
-    /// <summary>
-    /// 目标知识点 ID
-    /// </summary>
-    public string TargetKpId { get; set; } = string.Empty;
-
-    /// <summary>
-    /// 关系类型
-    /// </summary>
-    [JsonConverter(typeof(StringEnumConverter))]
-    public RelationshipType Type { get; set; } = RelationshipType.Related;
-
-    /// <summary>
-    /// 关系权重（0.0~1.0，值越大关系越密切）
-    /// </summary>
-    public float Weight { get; set; } = 0.5f;
-}
-
-/// <summary>
-/// 知识点关系类型
-/// </summary>
-public enum RelationshipType
-{
-    /// <summary>
-    /// 父知识点
-    /// </summary>
-    Parent,
-
-    /// <summary>
-    /// 子知识点
-    /// </summary>
-    Child,
-
-    /// <summary>
-    /// 关联知识点
-    /// </summary>
-    Related,
-
-    /// <summary>
-    /// 依赖关系
-    /// </summary>
-    Depends,
-
-    /// <summary>
-    /// 对比关系
-    /// </summary>
-    Contrast
 }
 
 /// <summary>

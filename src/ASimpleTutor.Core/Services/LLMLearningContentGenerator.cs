@@ -179,13 +179,7 @@ public class LLMLearningContentGenerator : ILearningContentGenerator
                     Type = ConvertSlideType(dto.Type),
                     Order = dto.Order,
                     Title = dto.Title,
-                    HtmlContent = dto.Content,
-                    SourceReferences = new List<SourceReference>(),
-                    Config = new SlideConfig
-                    {
-                        AllowSkip = dto.Config?.AllowSkip ?? true,
-                        RequireComplete = dto.Config?.RequireComplete ?? false
-                    }
+                    HtmlContent = dto.Content
                 })
                 .ToList()
         };

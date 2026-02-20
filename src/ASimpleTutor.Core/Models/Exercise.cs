@@ -60,11 +60,6 @@ public class Exercise
     public List<string> KeyPoints { get; set; } = new();
 
     /// <summary>
-    /// 幻灯片配置（用于嵌入式 Quiz Slide）
-    /// </summary>
-    public QuizSlideConfig? SlideConfig { get; set; }
-
-    /// <summary>
     /// 创建时间
     /// </summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -95,37 +90,6 @@ public enum ExerciseType
     /// 简答题
     /// </summary>
     ShortAnswer
-}
-
-/// <summary>
-/// 测验幻灯片配置（用于嵌入式 Quiz Slide）
-/// </summary>
-public class QuizSlideConfig
-{
-    /// <summary>
-    /// 是否允许跳过
-    /// </summary>
-    public bool AllowSkip { get; set; } = true;
-
-    /// <summary>
-    /// 强制模式：必须答对才能继续
-    /// </summary>
-    public bool ForceCorrect { get; set; } = false;
-
-    /// <summary>
-    /// 最大尝试次数
-    /// </summary>
-    public int MaxAttempts { get; set; } = 3;
-
-    /// <summary>
-    /// 答对后显示的解析
-    /// </summary>
-    public string? CorrectFeedback { get; set; }
-
-    /// <summary>
-    /// 答错后显示的解析
-    /// </summary>
-    public string? IncorrectFeedback { get; set; }
 }
 
 /// <summary>
@@ -224,26 +188,6 @@ public class ExerciseFeedback
     /// 参考答案
     /// </summary>
     public string? ReferenceAnswer { get; set; }
-
-    /// <summary>
-    /// 覆盖的要点
-    /// </summary>
-    public List<string> CoveredPoints { get; set; } = new();
-
-    /// <summary>
-    /// 遗漏的要点
-    /// </summary>
-    public List<string> MissingPoints { get; set; } = new();
-
-    /// <summary>
-    /// 错误分析
-    /// </summary>
-    public string? ErrorAnalysis { get; set; }
-
-    /// <summary>
-    /// 掌握度建议
-    /// </summary>
-    public float? MasteryAdjustment { get; set; }
 }
 
 /// <summary>

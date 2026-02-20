@@ -3,7 +3,6 @@ import { computed, ref, watch } from 'vue'
 import { marked } from 'marked'
 import QuizOptions from './slide/QuizOptions.vue'
 import QuizFeedback from './slide/QuizFeedback.vue'
-import SourcesPanel from './slide/SourcesPanel.vue'
 import SlideNavigation from './slide/SlideNavigation.vue'
 
 const props = defineProps({
@@ -234,11 +233,6 @@ const handleAudioPause = () => {
             :feedback="currentFeedback"
           />
         </div>
-
-        <SourcesPanel
-          v-if="currentSlide.sources && currentSlide.sources.length > 0"
-          :sources="currentSlide.sources"
-        />
       </div>
 
       <div v-else class="empty-slide">
