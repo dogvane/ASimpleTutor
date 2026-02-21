@@ -485,11 +485,6 @@ public class PPTPage
     public string? SpeechScript { get; set; }
 
     /// <summary>
-    /// 原文引用标记列表
-    /// </summary>
-    public List<SourceReference> SourceReferences { get; set; } = new();
-
-    /// <summary>
     /// 知识图谱数据
     /// </summary>
     public KnowledgeGraphData KnowledgeGraphData { get; set; } = new KnowledgeGraphData();
@@ -605,3 +600,5 @@ public class PageScript
     /// </summary>
     public float Duration { get; set; }
 }
+
+

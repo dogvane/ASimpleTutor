@@ -184,13 +184,7 @@ public class SlideBuilderService
                     Type = SlideTypeDto.DeepDive,
                     Order = order++,
                     Title = level.Title,
-                    Content = content.ToString(),
-                    Config = new SlideConfigDto
-                    {
-                        AllowSkip = true,
-                        RequireComplete = false,
-                        EstimatedTime = 90
-                    }
+                    Content = content.ToString()
                 });
             }
         }
