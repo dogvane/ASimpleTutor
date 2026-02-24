@@ -1,0 +1,274 @@
+{
+  "schema_version": "1.0",
+  "validation": {
+    "document_scan": {
+      "expected": {
+        "title": "AI Agent 实现种类",
+        "sections": [
+          {
+            "heading": "1. 基于规则的智能体",
+            "subsections": [
+              "1.1 规则引擎架构",
+              "1.2 案例分析：专家系统",
+              "1.3 现代规则引擎的演进"
+            ]
+          },
+          {
+            "heading": "2. 基于强化学习的智能体",
+            "subsections": [
+              "2.1 强化学习基础",
+              "2.2 强化学习算法分类",
+              "2.3 强化学习在智能体中的应用"
+            ]
+          },
+          {
+            "heading": "3. 基于大语言模型的智能体",
+            "subsections": [
+              "3.1 大语言模型基础",
+              "3.2 基于大语言模型的智能体架构",
+              "3.3 基于大语言模型的智能体应用"
+            ]
+          },
+          {
+            "heading": "4. 多智能体系统",
+            "subsections": [
+              "4.1 多智能体系统基础",
+              "4.2 多智能体系统的协作机制",
+              "4.3 多智能体系统的应用"
+            ]
+          }
+        ]
+      },
+      "actual_file": "01_preprocessing_result.json"
+    },
+    "knowledge_extraction": {
+      "expected": {
+        "knowledge_points": [
+          {
+            "title": "规则引擎架构",
+            "type": "concept",
+            "importance": 0.7,
+            "chapter_path": ["AI Agent 实现种类", "1. 基于规则的智能体", "1.1 规则引擎架构"]
+          },
+          {
+            "title": "专家系统",
+            "type": "concept",
+            "importance": 0.8,
+            "chapter_path": ["AI Agent 实现种类", "1. 基于规则的智能体", "1.2 案例分析：专家系统"]
+          },
+          {
+            "title": "现代规则引擎",
+            "type": "concept",
+            "importance": 0.6,
+            "chapter_path": ["AI Agent 实现种类", "1. 基于规则的智能体", "1.3 现代规则引擎的演进"]
+          },
+          {
+            "title": "强化学习基础",
+            "type": "concept",
+            "importance": 0.8,
+            "chapter_path": ["AI Agent 实现种类", "2. 基于强化学习的智能体", "2.1 强化学习基础"]
+          },
+          {
+            "title": "强化学习算法分类",
+            "type": "concept",
+            "importance": 0.7,
+            "chapter_path": ["AI Agent 实现种类", "2. 基于强化学习的智能体", "2.2 强化学习算法分类"]
+          },
+          {
+            "title": "强化学习应用",
+            "type": "concept",
+            "importance": 0.7,
+            "chapter_path": ["AI Agent 实现种类", "2. 基于强化学习的智能体", "2.3 强化学习在智能体中的应用"]
+          },
+          {
+            "title": "大语言模型基础",
+            "type": "concept",
+            "importance": 0.9,
+            "chapter_path": ["AI Agent 实现种类", "3. 基于大语言模型的智能体", "3.1 大语言模型基础"]
+          },
+          {
+            "title": "基于大语言模型的智能体架构",
+            "type": "concept",
+            "importance": 0.9,
+            "chapter_path": ["AI Agent 实现种类", "3. 基于大语言模型的智能体", "3.2 基于大语言模型的智能体架构"]
+          },
+          {
+            "title": "基于大语言模型的智能体应用",
+            "type": "concept",
+            "importance": 0.8,
+            "chapter_path": ["AI Agent 实现种类", "3. 基于大语言模型的智能体", "3.3 基于大语言模型的智能体应用"]
+          },
+          {
+            "title": "多智能体系统基础",
+            "type": "concept",
+            "importance": 0.7,
+            "chapter_path": ["AI Agent 实现种类", "4. 多智能体系统", "4.1 多智能体系统基础"]
+          },
+          {
+            "title": "多智能体系统的协作机制",
+            "type": "concept",
+            "importance": 0.8,
+            "chapter_path": ["AI Agent 实现种类", "4. 多智能体系统", "4.2 多智能体系统的协作机制"]
+          },
+          {
+            "title": "多智能体系统的应用",
+            "type": "concept",
+            "importance": 0.7,
+            "chapter_path": ["AI Agent 实现种类", "4. 多智能体系统", "4.3 多智能体系统的应用"]
+          }
+        ]
+      }
+    },
+    "ppt_slides": {
+      "expected": {
+        "slides": [
+          {
+            "title": "AI Agent 实现种类",
+            "content_type": "overview",
+            "sections": ["1. 基于规则的智能体", "2. 基于强化学习的智能体", "3. 基于大语言模型的智能体", "4. 多智能体系统"]
+          },
+          {
+            "title": "1. 基于规则的智能体",
+            "content_type": "section",
+            "subsections": ["1.1 规则引擎架构", "1.2 案例分析：专家系统", "1.3 现代规则引擎的演进"]
+          },
+          {
+            "title": "1.1 规则引擎架构",
+            "content_type": "subsection",
+            "key_points": ["规则引擎的核心组件", "规则的表示形式", "规则引擎的优势与局限性"]
+          },
+          {
+            "title": "1.2 案例分析：专家系统",
+            "content_type": "subsection",
+            "key_points": ["专家系统的核心组件", "专家系统的工作原理", "专家系统的应用案例"]
+          },
+          {
+            "title": "1.3 现代规则引擎的演进",
+            "content_type": "subsection",
+            "key_points": ["与机器学习的结合", "分布式架构", "实时处理能力"]
+          },
+          {
+            "title": "2. 基于强化学习的智能体",
+            "content_type": "section",
+            "subsections": ["2.1 强化学习基础", "2.2 强化学习算法分类", "2.3 强化学习在智能体中的应用"]
+          },
+          {
+            "title": "2.1 强化学习基础",
+            "content_type": "subsection",
+            "key_points": ["强化学习的基本要素", "强化学习的核心挑战", "强化学习的应用场景"]
+          },
+          {
+            "title": "2.2 强化学习算法分类",
+            "content_type": "subsection",
+            "key_points": ["基于模型的强化学习", "无模型的强化学习", "演员-评论家方法"]
+          },
+          {
+            "title": "2.3 强化学习在智能体中的应用",
+            "content_type": "subsection",
+            "key_points": ["游戏领域", "机器人领域", "推荐系统", "金融领域"]
+          },
+          {
+            "title": "3. 基于大语言模型的智能体",
+            "content_type": "section",
+            "subsections": ["3.1 大语言模型基础", "3.2 基于大语言模型的智能体架构", "3.3 基于大语言模型的智能体应用"]
+          },
+          {
+            "title": "3.1 大语言模型基础",
+            "content_type": "subsection",
+            "key_points": ["Transformer架构", "自监督学习", "预训练-微调范式", "涌现能力"]
+          },
+          {
+            "title": "3.2 基于大语言模型的智能体架构",
+            "content_type": "subsection",
+            "key_points": ["核心组件", "工作流程", "架构优势"]
+          },
+          {
+            "title": "3.3 基于大语言模型的智能体应用",
+            "content_type": "subsection",
+            "key_points": ["对话系统", "助手应用", "教育领域", "医疗领域"]
+          },
+          {
+            "title": "4. 多智能体系统",
+            "content_type": "section",
+            "subsections": ["4.1 多智能体系统基础", "4.2 多智能体系统的协作机制", "4.3 多智能体系统的应用"]
+          },
+          {
+            "title": "4.1 多智能体系统基础",
+            "content_type": "subsection",
+            "key_points": ["多智能体系统的基本要素", "多智能体系统的优势", "多智能体系统的挑战"]
+          },
+          {
+            "title": "4.2 多智能体系统的协作机制",
+            "content_type": "subsection",
+            "key_points": ["协商", "合同网", "协同规划", "协同学习"]
+          },
+          {
+            "title": "4.3 多智能体系统的应用",
+            "content_type": "subsection",
+            "key_points": ["机器人领域", "交通领域", "金融领域", "供应链管理"]
+          }
+        ]
+      }
+    },
+    "teaching_hints": {
+      "expected": {
+        "hints": [
+          {
+            "chapter_path": ["AI Agent 实现种类", "1. 基于规则的智能体"],
+            "hints": [
+              "重点讲解规则引擎的工作原理和应用场景",
+              "通过专家系统的案例帮助学生理解基于规则的智能体的优势与局限性",
+              "对比现代规则引擎与传统规则引擎的区别"
+            ]
+          },
+          {
+            "chapter_path": ["AI Agent 实现种类", "2. 基于强化学习的智能体"],
+            "hints": [
+              "重点讲解强化学习的基本概念和核心要素",
+              "通过游戏AI的例子帮助学生理解强化学习的应用",
+              "对比不同强化学习算法的优缺点"
+            ]
+          },
+          {
+            "chapter_path": ["AI Agent 实现种类", "3. 基于大语言模型的智能体"],
+            "hints": [
+              "重点讲解大语言模型的基本原理和涌现能力",
+              "通过ChatGPT等例子帮助学生理解基于大语言模型的智能体的应用",
+              "讨论基于大语言模型的智能体的挑战和未来发展方向"
+            ]
+          },
+          {
+            "chapter_path": ["AI Agent 实现种类", "4. 多智能体系统"],
+            "hints": [
+              "重点讲解多智能体系统的协作机制",
+              "通过机器人协作的例子帮助学生理解多智能体系统的应用",
+              "讨论多智能体系统的挑战和未来发展方向"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "validation_rules": {
+    "document_scan": {
+      "check_structure": true,
+      "check_section_count": true,
+      "check_content_length": true
+    },
+    "knowledge_extraction": {
+      "check_coverage": true,
+      "check_importance": true,
+      "check_chapter_path": true
+    },
+    "ppt_slides": {
+      "check_structure": true,
+      "check_content_type": true,
+      "check_key_points": true
+    },
+    "teaching_hints": {
+      "check_chapter_coverage": true,
+      "check_hint_relevance": true,
+      "check_hint_detail": true
+    }
+  }
+}

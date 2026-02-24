@@ -16,7 +16,8 @@ namespace ASimpleTutor.IntegrationTests;
 
 /// <summary>
 /// 控制台集成测试入口程序
-/// 测试文档扫描和学习内容生成模块
+/// 测试文档扫描处理流程 - 完整流程测试
+/// 覆盖：预处理阶段、数据生成阶段、数据保存阶段、学习阶段
 /// </summary>
 public class Program
 {
@@ -25,16 +26,17 @@ public class Program
     private static ILogger<KnowledgeBuilder> _builderLogger = null!;
     private static ILogger<ExerciseService> _exerciseLogger = null!;
     private static ILogger<KnowledgeGraphBuilder> _graphBuilderLogger = null!;
+    private static ILogger<KnowledgeSystemStore> _storeLogger = null!;
+    private static ILogger<KnowledgeSystemCoordinator> _coordinatorLogger = null!;
 
     public static async Task Main(string[] args)
     {
         Console.WriteLine("=".PadRight(60, '='));
-        Console.WriteLine("ASimpleTutor 集成测试");
+        Console.WriteLine("ASimpleTutor 文档扫描处理流程集成测试");
         Console.WriteLine("=".PadRight(60, '='));
         Console.WriteLine();
 
         // 1. 加载配置
-        // 确定项目目录（配置文件在项目目录下，不在 bin 目录下）
         var projectDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", ".."));
         Console.WriteLine($"BasePath: {projectDir}");
         Console.WriteLine($"appsettings.json 路径: {Path.Combine(projectDir, "appsettings.json")}");
@@ -60,10 +62,8 @@ public class Program
         var config = configuration.GetSection("Test").Get<TestConfig>() ?? new TestConfig();
 
         // 解析路径（相对于项目根目录）
-        // AppContext.BaseDirectory = tests/ASimpleTutor.IntegrationTests/bin/Debug/net10.0/
-        // 需要向上 5 级到达项目根目录，然后访问 tests/datas/hello-agents
         var projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        var dataPath = Path.Combine(projectRoot, "tests", "datas", "hello-agents");
+        var dataPath = Path.Combine(projectRoot, "tests", "datas", "agent-implementation-types");
 
         // 输出路径改为与数据目录同级别，例如: tests/hello-agents-output
         var dataDirName = Path.GetFileName(dataPath);
@@ -87,24 +87,44 @@ public class Program
         _builderLogger = loggerFactory.CreateLogger<KnowledgeBuilder>();
         _exerciseLogger = loggerFactory.CreateLogger<ExerciseService>();
         _graphBuilderLogger = loggerFactory.CreateLogger<KnowledgeGraphBuilder>();
+        _storeLogger = loggerFactory.CreateLogger<KnowledgeSystemStore>();
+        _coordinatorLogger = loggerFactory.CreateLogger<KnowledgeSystemCoordinator>();
 
         // 2. 手动创建服务依赖
         // 读取 SectioningOptions 配置
         var sectioningOptions = new SectioningOptions();
         configuration.GetSection("Sectioning").Bind(sectioningOptions);
         var sectioningOptionsWrapper = Options.Create(sectioningOptions);
-        
+
         var scanner = new MarkdownScanner(_scannerLogger, sectioningOptionsWrapper);
         var llmService = CreateRealLLMService(configuration);
 
-        // 3. 运行测试
+        // 3. 运行测试 - 按照文档扫描处理流程的顺序
         var results = new IntegrationTestResults();
 
-        await TestDocumentScanner(scanner, dataPath, outputPath, results);
-        var (knowledgeSystem, documents) = await TestKnowledgeBuilder(scanner, llmService, dataPath, outputPath, results);
-        await TestKnowledgeGraphBuilder(llmService, knowledgeSystem, documents, outputPath, results);
-        await TestLearningGenerator(llmService, knowledgeSystem, documents, outputPath, results);
-        await TestExerciseGenerator(llmService, knowledgeSystem, outputPath, results);
+        Console.WriteLine("=".PadRight(60, '='));
+        Console.WriteLine("第一阶段: 预处理阶段 - 文档扫描与解析");
+        Console.WriteLine("=".PadRight(60, '='));
+        Console.WriteLine();
+        await TestPreprocessingPhase(scanner, dataPath, outputPath, results);
+
+        Console.WriteLine("=".PadRight(60, '='));
+        Console.WriteLine("第二阶段: 数据生成阶段 - 知识体系构建");
+        Console.WriteLine("=".PadRight(60, '='));
+        Console.WriteLine();
+        var (knowledgeSystem, documents) = await TestDataGenerationPhase(scanner, llmService, dataPath, outputPath, results);
+
+        Console.WriteLine("=".PadRight(60, '='));
+        Console.WriteLine("第三阶段: 数据保存阶段 - 存储验证");
+        Console.WriteLine("=".PadRight(60, '='));
+        Console.WriteLine();
+        await TestDataStoragePhase(knowledgeSystem, documents, outputPath, results);
+
+        Console.WriteLine("=".PadRight(60, '='));
+        Console.WriteLine("第四阶段: 学习阶段 - 内容生成与测试");
+        Console.WriteLine("=".PadRight(60, '='));
+        Console.WriteLine();
+        await TestLearningPhase(llmService, knowledgeSystem, documents, outputPath, results);
 
         // 4. 保存测试结果摘要
         var summaryPath = Path.Combine(outputPath, "test_summary.json");
@@ -113,9 +133,23 @@ public class Program
             Timestamp = DateTime.UtcNow.ToString("o"),
             DataPath = dataPath,
             OutputPath = outputPath,
-            Tests = results
+            Tests = results,
+            FlowchartVersion = "1.1",
+            TestedPhases = new[] { "预处理阶段", "数据生成阶段", "数据保存阶段", "学习阶段" }
         };
         await File.WriteAllTextAsync(summaryPath, JsonConvert.SerializeObject(summary, Formatting.Indented));
+
+        // 5. 运行验证
+        var validationDataPath = Path.Combine(dataPath, "validation_data.json");
+        if (File.Exists(validationDataPath))
+        {
+            ValidationHelper.RunAllValidations(outputPath, validationDataPath);
+        }
+        else
+        {
+            Console.WriteLine();
+            Console.WriteLine("Validation data file not found. Skipping validation phase.");
+        }
 
         Console.WriteLine();
         Console.WriteLine("=".PadRight(60, '='));
@@ -134,13 +168,13 @@ public class Program
         return new LLMService(llmConfig.ApiKey, llmConfig.BaseUrl, llmConfig.Model, 1, llmLogger);
     }
 
-    private static async Task TestDocumentScanner(
+    private static async Task TestPreprocessingPhase(
         IScannerService scanner,
         string dataPath,
         string outputPath,
         IntegrationTestResults results)
     {
-        Console.WriteLine("[测试 1] 文档扫描服务");
+        Console.WriteLine("[测试 1] 预处理阶段 - 文档扫描与解析");
         Console.WriteLine("-".PadRight(40, '-'));
 
         try
@@ -174,29 +208,29 @@ public class Program
             {
                 CollectAllSections(doc.Sections, allSections);
             }
-            
+
             var leafSections = allSections.Where(s => s.SubSections.Count == 0).ToList();
             var totalSections = allSections.Count;
             var leafSectionCount = leafSections.Count;
-            
+
             // 原始字符统计
             var totalOriginalCharacters = allSections.Sum(s => s.OriginalLength);
             var avgOriginalCharactersPerSection = totalSections > 0 ? totalOriginalCharacters / totalSections : 0;
-            
+
             // 有效字符统计
             var totalEffectiveCharacters = allSections.Sum(s => s.EffectiveLength);
             var avgEffectiveCharactersPerSection = totalSections > 0 ? totalEffectiveCharacters / totalSections : 0;
-            
+
             // 过滤字符统计
             var totalFilteredCharacters = allSections.Sum(s => s.FilteredLength);
             var avgFilteredCharactersPerSection = totalSections > 0 ? totalFilteredCharacters / totalSections : 0;
-            
+
             // 最大最小值统计
             var maxOriginalCharacters = allSections.Count > 0 ? allSections.Max(s => s.OriginalLength) : 0;
             var minOriginalCharacters = allSections.Count > 0 ? allSections.Min(s => s.OriginalLength) : 0;
             var maxEffectiveCharacters = allSections.Count > 0 ? allSections.Max(s => s.EffectiveLength) : 0;
             var minEffectiveCharacters = allSections.Count > 0 ? allSections.Min(s => s.EffectiveLength) : 0;
-            
+
             Console.WriteLine();
             Console.WriteLine("  [扫描总结]");
             Console.WriteLine($"    总章节数: {totalSections}");
@@ -227,7 +261,7 @@ public class Program
             }
 
             // 保存详细结果
-            var scannerResultPath = Path.Combine(outputPath, "01_scanner_result.json");
+            var scannerResultPath = Path.Combine(outputPath, "01_preprocessing_result.json");
             await File.WriteAllTextAsync(scannerResultPath, JsonConvert.SerializeObject(documents, Formatting.Indented));
             Console.WriteLine($"  详细结果: {scannerResultPath}");
         }
@@ -240,14 +274,14 @@ public class Program
         Console.WriteLine();
     }
 
-    private static async Task<(KnowledgeSystem? KnowledgeSystem, List<Document>? Documents)> TestKnowledgeBuilder(
+    private static async Task<(KnowledgeSystem? KnowledgeSystem, List<Document>? Documents)> TestDataGenerationPhase(
         IScannerService scanner,
         ILLMService llmService,
         string dataPath,
         string outputPath,
         IntegrationTestResults results)
     {
-        Console.WriteLine("[测试 2] 知识体系构建服务");
+        Console.WriteLine("[测试 2] 数据生成阶段 - 知识体系构建");
         Console.WriteLine("-".PadRight(40, '-'));
 
         KnowledgeSystem? knowledgeSystem = null;
@@ -284,7 +318,6 @@ public class Program
             var graphStore = new KnowledgeGraphStore(graphStoreLogger, outputPath);
             var graphBuilder = new KnowledgeGraphBuilder(store, graphStore);
 
-            var coordinatorLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<KnowledgeSystemCoordinator>();
             var coordinator = new KnowledgeSystemCoordinator(
                 scanner,
                 knowledgeExtractor,
@@ -294,7 +327,7 @@ public class Program
                 graphBuilder,
                 store,
                 new ScanProgressService(scanProgressLogger),
-                coordinatorLogger);
+                _coordinatorLogger);
 
             var builder = new KnowledgeBuilder(coordinator);
             var (ks, docs) = await builder.BuildAsync("test-book", dataPath);
@@ -327,7 +360,7 @@ public class Program
             }
 
             // 保存详细结果
-            var kbResultPath = Path.Combine(outputPath, "02_knowledge_builder_result.json");
+            var kbResultPath = Path.Combine(outputPath, "02_data_generation_result.json");
             await File.WriteAllTextAsync(kbResultPath, JsonConvert.SerializeObject(knowledgeSystem, Formatting.Indented));
             Console.WriteLine($"  详细结果: {kbResultPath}");
         }
@@ -348,27 +381,25 @@ public class Program
         return (knowledgeSystem, documents);
     }
 
-    private static async Task TestKnowledgeGraphBuilder(
-        ILLMService llmService,
+    private static async Task TestDataStoragePhase(
         KnowledgeSystem? knowledgeSystem,
         List<Document>? documents,
         string outputPath,
         IntegrationTestResults results)
     {
-        Console.WriteLine("[测试 3] 知识图谱构建服务");
+        Console.WriteLine("[测试 3] 数据保存阶段 - 存储验证");
         Console.WriteLine("-".PadRight(40, '-'));
 
         try
         {
-            // 检查知识体系是否有效
-            if (knowledgeSystem == null || !knowledgeSystem.KnowledgePoints.Any())
+            if (knowledgeSystem == null || documents == null)
             {
-                results.KnowledgeGraphBuilderTest = new KnowledgeGraphBuilderTestResult
+                results.StorageTest = new StorageTestResult
                 {
                     Success = false,
-                    ErrorMessage = "没有可用的知识点，请先运行知识体系构建测试"
+                    ErrorMessage = "没有可用的数据，请先运行知识体系构建测试"
                 };
-                Console.WriteLine("  跳过: 没有知识点");
+                Console.WriteLine("  跳过: 没有数据可存储");
                 Console.WriteLine();
                 return;
             }
@@ -384,9 +415,9 @@ public class Program
 
             // 创建知识图谱构建服务（带 LLM 服务）
             var graphBuilderLogger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger<KnowledgeGraphBuilder>();
-            var graphBuilder = new KnowledgeGraphBuilder(store, graphStore, llmService, graphBuilderLogger);
+            var graphBuilder = new KnowledgeGraphBuilder(store, graphStore, null, graphBuilderLogger);
 
-            // 构建知识图谱（使用异步方法以支持 LLM 关系提取）
+            // 构建知识图谱
             var options = new KnowledgeGraphBuildOptions
             {
                 IncludeChapterNodes = true,
@@ -397,150 +428,68 @@ public class Program
             };
 
             var knowledgeGraph = await graphBuilder.BuildAsync(knowledgeSystem!.KnowledgePoints, options, CancellationToken.None);
+            await graphStore.SaveAsync(knowledgeGraph, CancellationToken.None);
 
-            // 统计节点类型分布
-            var nodeTypeDistribution = knowledgeGraph.Nodes
-                .GroupBy(n => n.Type)
-                .Select(g => new { Type = g.Key.ToString(), Count = g.Count() })
-                .ToDictionary(g => g.Type, g => g.Count);
-
-            // 统计边类型分布
-            var edgeTypeDistribution = knowledgeGraph.Edges
-                .GroupBy(e => e.Type)
-                .Select(g => new { Type = g.Key.ToString(), Count = g.Count() })
-                .ToDictionary(g => g.Type, g => g.Count);
-
-            // 计算平均权重
-            var avgWeight = knowledgeGraph.Edges.Any()
-                ? knowledgeGraph.Edges.Average(e => e.Weight)
-                : 0.0f;
-
-            results.KnowledgeGraphBuilderTest = new KnowledgeGraphBuilderTestResult
+            results.StorageTest = new StorageTestResult
             {
                 Success = true,
-                NodeCount = knowledgeGraph.Nodes.Count,
-                EdgeCount = knowledgeGraph.Edges.Count,
-                NodeTypeDistribution = nodeTypeDistribution,
-                EdgeTypeDistribution = edgeTypeDistribution,
-                AverageEdgeWeight = avgWeight
+                KnowledgePointsSaved = knowledgeSystem.KnowledgePoints.Count,
+                DocumentsSaved = documents.Count,
+                KnowledgeGraphNodes = knowledgeGraph.Nodes.Count,
+                KnowledgeGraphEdges = knowledgeGraph.Edges.Count
             };
 
-            Console.WriteLine($"  构建了知识图谱:");
-            Console.WriteLine($"    - 节点数: {knowledgeGraph.Nodes.Count}");
-            Console.WriteLine($"    - 边数: {knowledgeGraph.Edges.Count}");
+            Console.WriteLine($"  数据保存完成:");
+            Console.WriteLine($"    - 知识点数量: {knowledgeSystem.KnowledgePoints.Count}");
+            Console.WriteLine($"    - 文档数量: {documents.Count}");
+            Console.WriteLine($"    - 知识图谱节点数: {knowledgeGraph.Nodes.Count}");
+            Console.WriteLine($"    - 知识图谱边数: {knowledgeGraph.Edges.Count}");
             Console.WriteLine();
 
-            Console.WriteLine("  [节点类型分布]");
-            foreach (var (type, count) in nodeTypeDistribution.OrderByDescending(kv => kv.Value))
+            // 验证文件是否成功保存
+            var knowledgePointsPath = Path.Combine(outputPath, "knowledge-points.json");
+            var documentsPath = Path.Combine(outputPath, "documents.json");
+            var knowledgeGraphPath = Path.Combine(outputPath, "knowledge-graph.json");
+            var slideCardsPath = Path.Combine(outputPath, "slide-cards");
+
+            Console.WriteLine("  [文件验证]");
+            Console.WriteLine($"    - 知识点文件: {(File.Exists(knowledgePointsPath) ? "存在" : "缺失")}");
+            Console.WriteLine($"    - 文档结构文件: {(File.Exists(documentsPath) ? "存在" : "缺失")}");
+            Console.WriteLine($"    - 知识图谱文件: {(File.Exists(knowledgeGraphPath) ? "存在" : "缺失")}");
+            Console.WriteLine($"    - PPT卡片目录: {(Directory.Exists(slideCardsPath) ? "存在" : "缺失")}");
+
+            if (Directory.Exists(slideCardsPath))
             {
-                Console.WriteLine($"    - {type}: {count}");
+                var slideCardsCount = Directory.GetFiles(slideCardsPath, "*.json").Length;
+                Console.WriteLine($"    - PPT卡片数量: {slideCardsCount}");
             }
-            Console.WriteLine();
 
-            Console.WriteLine("  [边类型分布]");
-            foreach (var (type, count) in edgeTypeDistribution.OrderByDescending(kv => kv.Value))
+            // 保存存储结果
+            var storageResultPath = Path.Combine(outputPath, "03_storage_result.json");
+            var storageResult = new
             {
-                Console.WriteLine($"    - {type}: {count}");
-            }
-            Console.WriteLine();
-
-            Console.WriteLine($"  [平均边权重]: {avgWeight:F3}");
-            Console.WriteLine();
-
-            // 显示部分节点信息
-            Console.WriteLine("  [前 10 个节点]");
-            foreach (var node in knowledgeGraph.Nodes.Take(10))
-            {
-                Console.WriteLine($"    - [{node.Type}] {node.Title} (重要性: {node.Importance:F2})");
-                if (node.Metadata != null)
+                Success = true,
+                KnowledgePointsCount = knowledgeSystem.KnowledgePoints.Count,
+                DocumentsCount = documents.Count,
+                KnowledgeGraph = new
                 {
-                    Console.WriteLine($"      大小: {node.Metadata.Size:F2}, 颜色: {node.Metadata.Color}");
+                    NodesCount = knowledgeGraph.Nodes.Count,
+                    EdgesCount = knowledgeGraph.Edges.Count
+                },
+                FilePaths = new
+                {
+                    KnowledgePoints = knowledgePointsPath,
+                    Documents = documentsPath,
+                    KnowledgeGraph = knowledgeGraphPath,
+                    SlideCards = slideCardsPath
                 }
-            }
-            if (knowledgeGraph.Nodes.Count > 10)
-            {
-                Console.WriteLine($"    ... 共 {knowledgeGraph.Nodes.Count} 个节点");
-            }
-            Console.WriteLine();
-
-            // 测试子图查询
-            if (knowledgeGraph.Nodes.Any())
-            {
-                Console.WriteLine("  [子图查询测试]");
-                var rootNode = knowledgeGraph.Nodes.First();
-                var subgraph = graphBuilder.GetSubgraph(knowledgeGraph, rootNode.NodeId, depth: 2);
-                Console.WriteLine($"    从节点 [{rootNode.Title}] 提取深度为 2 的子图:");
-                Console.WriteLine($"    - 子图节点数: {subgraph.Nodes.Count}");
-                Console.WriteLine($"    - 子图边数: {subgraph.Edges.Count}");
-                Console.WriteLine();
-
-                // 测试邻居节点查询
-                Console.WriteLine("  [邻居节点查询测试]");
-                var neighbors = graphBuilder.GetNeighbors(knowledgeGraph, rootNode.NodeId, maxNeighbors: 5);
-                Console.WriteLine($"    节点 [{rootNode.Title}] 的邻居节点:");
-                Console.WriteLine($"    - 邻居节点数: {neighbors.TotalNodes}");
-                Console.WriteLine($"    - 关联边数: {neighbors.TotalEdges}");
-                Console.WriteLine();
-
-                // 测试节点搜索
-                Console.WriteLine("  [节点搜索测试]");
-                if (knowledgeGraph.Nodes.Any())
-                {
-                    var searchKeyword = knowledgeGraph.Nodes.First().Title.Split(' ').First();
-                    var searchResults = graphBuilder.SearchNodes(knowledgeGraph, searchKeyword, maxResults: 5);
-                    Console.WriteLine($"    搜索关键词 [{searchKeyword}]:");
-                    Console.WriteLine($"    - 匹配节点数: {searchResults.TotalNodes}");
-                    Console.WriteLine($"    - 关联边数: {searchResults.TotalEdges}");
-                    if (searchResults.Nodes.Any())
-                    {
-                        Console.WriteLine("    匹配的节点:");
-                        foreach (var node in searchResults.Nodes)
-                        {
-                            Console.WriteLine($"      - {node.Title}");
-                        }
-                    }
-                    Console.WriteLine();
-                }
-            }
-
-            // 保存详细结果
-            var kgResultPath = Path.Combine(outputPath, "03_knowledge_graph_result.json");
-            var serializableGraph = new
-            {
-                knowledgeGraph.GraphId,
-                knowledgeGraph.BookHubId,
-                knowledgeGraph.CreatedAt,
-                knowledgeGraph.UpdatedAt,
-                Nodes = knowledgeGraph.Nodes.Select(n => new
-                {
-                    n.NodeId,
-                    n.Title,
-                    Type = n.Type.ToString(),
-                    n.Importance,
-                    n.ChapterPath,
-                    Metadata = new
-                    {
-                        n.Metadata?.Size,
-                        n.Metadata?.Color,
-                        Position = n.Metadata?.Position != null ? new { n.Metadata.Position.X, n.Metadata.Position.Y } : null
-                    }
-                }),
-                Edges = knowledgeGraph.Edges.Select(e => new
-                {
-                    e.EdgeId,
-                    e.SourceNodeId,
-                    e.TargetNodeId,
-                    Type = e.Type.ToString(),
-                    e.Weight,
-                    e.Description
-                })
             };
-            await File.WriteAllTextAsync(kgResultPath, JsonConvert.SerializeObject(serializableGraph, Formatting.Indented));
-            Console.WriteLine($"  详细结果: {kgResultPath}");
+            await File.WriteAllTextAsync(storageResultPath, JsonConvert.SerializeObject(storageResult, Formatting.Indented));
+            Console.WriteLine($"  详细结果: {storageResultPath}");
         }
         catch (Exception ex)
         {
-            results.KnowledgeGraphBuilderTest = new KnowledgeGraphBuilderTestResult { Success = false, ErrorMessage = ex.Message };
+            results.StorageTest = new StorageTestResult { Success = false, ErrorMessage = ex.Message };
             Console.WriteLine($"  失败: {ex.Message}");
             Console.WriteLine($"  堆栈跟踪: {ex.StackTrace}");
             if (ex.InnerException != null)
@@ -553,14 +502,14 @@ public class Program
         Console.WriteLine();
     }
 
-    private static async Task TestLearningGenerator(
+    private static async Task TestLearningPhase(
         ILLMService llmService,
         KnowledgeSystem? knowledgeSystem,
         List<Document>? documents,
         string outputPath,
         IntegrationTestResults results)
     {
-        Console.WriteLine("[测试 4] 学习内容生成服务");
+        Console.WriteLine("[测试 3.1] 学习内容生成");
         Console.WriteLine("-".PadRight(40, '-'));
 
         try
@@ -623,7 +572,7 @@ public class Program
             }
 
             // 保存详细结果
-            var lgResultPath = Path.Combine(outputPath, "04_learning_generator_result.json");
+            var lgResultPath = Path.Combine(outputPath, "04_learning_content_result.json");
             await File.WriteAllTextAsync(lgResultPath, JsonConvert.SerializeObject(learningPack, Formatting.Indented));
             Console.WriteLine($"  详细结果: {lgResultPath}");
         }
@@ -634,15 +583,8 @@ public class Program
         }
 
         Console.WriteLine();
-    }
 
-    private static async Task TestExerciseGenerator(
-        ILLMService llmService,
-        KnowledgeSystem? knowledgeSystem,
-        string outputPath,
-        IntegrationTestResults results)
-    {
-        Console.WriteLine("[测试 5] 习题生成服务");
+        Console.WriteLine("[测试 3.2] 习题生成与测试");
         Console.WriteLine("-".PadRight(40, '-'));
 
         try
@@ -756,7 +698,7 @@ public class Program
             }
 
             // 保存详细结果
-            var exResultPath = Path.Combine(outputPath, "05_exercise_generator_result.json");
+            var exResultPath = Path.Combine(outputPath, "05_exercise_result.json");
             await File.WriteAllTextAsync(exResultPath, JsonConvert.SerializeObject(exercises, Formatting.Indented));
             Console.WriteLine($"  详细结果: {exResultPath}");
         }
@@ -848,7 +790,7 @@ public class IntegrationTestResults
 {
     public ScannerTestResult? ScannerTest { get; set; }
     public KnowledgeBuilderTestResult? KnowledgeBuilderTest { get; set; }
-    public KnowledgeGraphBuilderTestResult? KnowledgeGraphBuilderTest { get; set; }
+    public StorageTestResult? StorageTest { get; set; }
     public LearningGeneratorTestResult? LearningGeneratorTest { get; set; }
     public ExerciseGeneratorTestResult? ExerciseGeneratorTest { get; set; }
 }
@@ -887,14 +829,13 @@ public class KnowledgePointInfo
     public int SnippetCount { get; set; }
 }
 
-public class KnowledgeGraphBuilderTestResult
+public class StorageTestResult
 {
     public bool Success { get; set; }
-    public int NodeCount { get; set; }
-    public int EdgeCount { get; set; }
-    public Dictionary<string, int>? NodeTypeDistribution { get; set; }
-    public Dictionary<string, int>? EdgeTypeDistribution { get; set; }
-    public double AverageEdgeWeight { get; set; }
+    public int KnowledgePointsSaved { get; set; }
+    public int DocumentsSaved { get; set; }
+    public int KnowledgeGraphNodes { get; set; }
+    public int KnowledgeGraphEdges { get; set; }
     public string? ErrorMessage { get; set; }
 }
 

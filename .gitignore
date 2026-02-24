@@ -430,5 +430,8 @@ FodyWeavers.xsd
 .claude/
 nul
 src/ASimpleTutor.Api/saves/
-tests/
 src/ASimpleTutor.Api/wwwroot/audios/
+tests/agent-implementation-types-output/
+tests/hello-agents-output/
+tests/saves/test-book/
+tests/ASimpleTutor.Tests/Data/Files/LearningGeneration/test_chapter.md
