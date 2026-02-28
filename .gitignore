@@ -428,6 +428,9 @@ FodyWeavers.xsd
 
 /docs/参考文档/*
 .claude/
+.trae/
+.vscode/
+.github/
 nul
 src/ASimpleTutor.Api/saves/
 src/ASimpleTutor.Api/wwwroot/audios/

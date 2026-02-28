@@ -55,7 +55,7 @@ public class LearningGenerator : ILearningGenerator
             if (string.IsNullOrEmpty(snippetTexts) || snippetTexts.Length < 100)
             {
                 _logger.LogError("原文片段为空或长度不足: {KpId}, 长度: {Length}", kp.KpId, snippetTexts?.Length ?? 0);
-                return CreateFallbackLearningPack(kp);
+                return null;
             }
 
             // 2. 调用 LLM 生成学习内容
@@ -68,14 +68,15 @@ public class LearningGenerator : ILearningGenerator
             }
             else
             {
-                // 降级：使用原文片段提取要点
-                return CreateFallbackLearningPack(kp);
+                // 生成失败，返回 null
+                _logger.LogError("学习内容生成失败: {KpId}", kp.KpId);
+                return null;
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "学习内容生成失败: {KpId}", kp.KpId);
-            return CreateFallbackLearningPack(kp);
+            return null;
         }
     }
 

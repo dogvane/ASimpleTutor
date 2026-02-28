@@ -40,27 +40,88 @@
 - 设计文档里不能有代码实现，允许有接口的代码签名描述
 - 设计文档里流程图/数据流图可以用 ASCII 艺术画（Markdown 代码块），但不能过多，要简洁明了
 
-## .NET 编码规范（常用清单）
+## .NET 编码规范
 
-- 启用 Nullable：`<Nullable>enable</Nullable>`
-- 命名：类型/方法 PascalCase；参数/局部 camelCase；私有字段 `_camelCase`；接口 `I` 前缀
-- 异步：I/O 一律 async；异步方法 `Async` 后缀；传 `CancellationToken`；禁用 `.Result`/`.Wait()`
-- 分层：Controller/Endpoint 只编排；核心逻辑进 service；外部依赖（LLM/文件/索引）抽接口
-- JSON：DTO 优先英文属性；必要时用 `[JsonPropertyName("...")]`；对外返回可加 `schemaVersion`
-- 日志：`ILogger<T>` 结构化日志；不要记录密钥/敏感原文；LLM 仅记录耗时/摘要
-- 业务并发：使用了 `ILLMService` 接口的业务，在调用该接口的方法，如果需要循环调用，可以使用 `Parallel.ForEach` 的方式进行并发
+### 命名规范
+- **类型/方法**：PascalCase (`ChaptersController`, `ExtractAsync`)
+- **参数/局部变量**：camelCase (`kpId`, `filePath`)
+- **私有字段**：`_camelCase` (`_logger`, `_knowledgeSystem`)
+- **接口**：`I` 前缀 (`ILLMService`, `IScannerService`)
+- **常量**：PascalCase (`MaxRetries`)
 
-### 资源安全
+### 异步编程
+- 所有 I/O 操作使用 `async/await`
+- 异步方法以 `Async` 后缀结尾
+- 必须传递 `CancellationToken cancellationToken = default`
+- **禁止** `.Result` / `.Wait()`（死锁风险）
+- 并发循环使用 `Parallel.ForEachAsync`
 
-- 共享资源访问：使用 `lock` 或 `Monitor` 进行同步，避免死锁
-- 线程安全设计：优先使用不可变对象和线程安全集合
-- 内存管理：注意避免闭包陷阱和内存泄漏（如未取消的任务）
+### 依赖注入
+- 构造函数注入依赖
+- Controller 只编排，逻辑进 Service
+- 外部依赖抽接口（`ILLMService`, `IScannerService`）
+- 使用 `[FromServices]` 按需注入
+
+### Controller 验证模式
+```csharp
+private bool ValidateRequest(string kpId, out KnowledgePoint? kp, out IActionResult? errorResult)
+{
+    kp = null;
+    errorResult = null;
+
+    if (_knowledgeSystem == null)
+    {
+        errorResult = NotFound(new { error = new { code = "NOT_INITIALIZED", message = "系统未初始化" } });
+        return false;
+    }
+
+    if (string.IsNullOrEmpty(kpId))
+    {
+        errorResult = BadRequest(new { error = new { code = "INVALID_PARAM", message = "参数不能为空" } });
+        return false;
+    }
+
+    kp = _knowledgeSystem.KnowledgePoints.FirstOrDefault(p => p.KpId == kpId);
+    if (kp == null)
+    {
+        errorResult = NotFound(new { error = new { code = "NOT_FOUND", message = $"知识点不存在: {kpId}" } });
+        return false;
+    }
+
+    return true;
+}
+
+// 使用
+if (!ValidateRequest(kpId, out var kp, out var errorResult)) return errorResult!;
+```
+
+### JSON 处理（Newtonsoft.Json）
+- DTO 属性用英文，必要时 `[JsonProperty("chinese_name")]` 映射
+- 枚举用 `[JsonConverter(typeof(StringEnumConverter))]`
+- 清理 markdown 代码块：移除 ` ```json` 和 ` ``` `
+
+### 日志记录
+- 使用结构化占位符：`_logger.LogInformation("处理完成: KpId={KpId}, Count={Count}", kpId, count)`
+- **禁止**记录密钥/敏感原文：`ApiKey=***`
+- LLM 响应只记录摘要：前 500 字符或仅长度
 
 ### 错误处理
+- `try-catch` 包裹 `await` 调用
+- 记录详细日志后返回 `null` 或抛出
+- 并发任务失败记录日志，提供降级方案
 
-- 异步异常：使用 `try-catch` 包裹 `await` 调用，避免 `AggregateException`
-- 容错机制：并发任务失败时，记录详细日志并提供降级方案
-- 批量任务：使用 `WhenAll` 时，考虑单个任务失败对整体的影响
+### 资源安全
+- 共享资源用 `lock` 同步
+- 并发限制用 `SemaphoreSlim`
+- 计数器用 `Interlocked` 原子操作
+
+### csproj 配置
+```xml
+<PropertyGroup>
+  <Nullable>enable</Nullable>
+  <ImplicitUsings>enable</ImplicitUsings>
+</PropertyGroup>
+```
 
 ## API URL 设计原则
 

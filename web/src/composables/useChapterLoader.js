@@ -152,9 +152,7 @@ export function useChapterLoader(state) {
           ? data.items
           : Array.isArray(data?.Items)
             ? data.Items
-            : data?.id || data?.Id
-              ? [data]
-              : []
+            : []
       chapters.value = rawItems.map(normalizeNode)
       expandedIds.value = chapters.value
         .filter((item) => item.expanded)
@@ -269,9 +267,9 @@ export function useChapterLoader(state) {
   // 加载章节学习内容
   const loadChapterContent = async (chapterId) => {
     try {
-      const data = await generateChapterContent(chapterId)
-      console.log('章节学习内容已加载:', data)
-      return data
+      // 暂时不调用API，因为服务器端还没有实现generate-content端点
+      console.log('章节学习内容加载功能暂未实现:', chapterId)
+      return null
     } catch (error) {
       console.error('加载章节学习内容失败:', error)
       setError(error)

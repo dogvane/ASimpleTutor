@@ -30,36 +30,45 @@ public class ChaptersController : ControllerBase
     }
 
     /// <summary>
-    /// 获取章节树
-    /// </summary>
-    [HttpGet]
-    public IActionResult GetChapters()
-    {
-        if (_knowledgeSystem == null)
+        /// 获取章节树
+        /// </summary>
+        [HttpGet]
+        public IActionResult GetChapters()
         {
-            return NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
-        }
+            if (_knowledgeSystem == null)
+            {
+                System.Console.WriteLine("[DEBUG] Knowledge system is null");
+                return NotFound(new { error = new { code = "NOT_FOUND", message = "请先激活书籍目录并构建知识体系" } });
+            }
 
-        // 如果有知识点树，使用知识点树
-        if (_knowledgeSystem.Tree != null)
-        {
-            var chapters = BuildChapterTree(_knowledgeSystem.Tree);
-            return Ok(new { items = chapters });
-        }
+            System.Console.WriteLine($"[DEBUG] Knowledge system exists, Tree: {_knowledgeSystem.Tree != null}, Documents count: {_knowledgeSystem.Documents.Count}");
 
-        // 如果没有知识点树但有文档，从文档构建章节树
-        if (_knowledgeSystem.Documents.Count > 0)
-        {
-            System.Console.WriteLine($"[DEBUG] Building chapter tree from {_knowledgeSystem.Documents.Count} documents");
-            var chapters = BuildChapterTreeFromDocuments(_knowledgeSystem.Documents);
-            System.Console.WriteLine($"[DEBUG] Built {chapters.Count} chapter nodes");
-            return Ok(new { items = chapters });
-        }
+            // 如果有知识点树且不为空，使用知识点树
+            if (_knowledgeSystem.Tree != null)
+            {
+                System.Console.WriteLine("[DEBUG] Using knowledge tree");
+                var chapters = BuildChapterTree(_knowledgeSystem.Tree);
+                System.Console.WriteLine($"[DEBUG] Built {chapters.Count} chapter nodes from tree");
+                if (chapters.Count > 0)
+                {
+                    return Ok(new { items = chapters });
+                }
+                System.Console.WriteLine("[DEBUG] Knowledge tree is empty, trying to build from documents");
+            }
 
-        // 都没有，返回空数组
-        System.Console.WriteLine("[DEBUG] No tree and no documents, returning empty array");
-        return Ok(new { items = new List<ChapterTreeNode>() });
-    }
+            // 如果没有知识点树或知识点树为空，但有文档，从文档构建章节树
+            if (_knowledgeSystem.Documents.Count > 0)
+            {
+                System.Console.WriteLine($"[DEBUG] Building chapter tree from {_knowledgeSystem.Documents.Count} documents");
+                var chapters = BuildChapterTreeFromDocuments(_knowledgeSystem.Documents);
+                System.Console.WriteLine($"[DEBUG] Built {chapters.Count} chapter nodes from documents");
+                return Ok(new { items = chapters });
+            }
+
+            // 都没有，返回空数组
+            System.Console.WriteLine("[DEBUG] No tree and no documents, returning empty array");
+            return Ok(new { items = new List<ChapterTreeNode>() });
+        }
 
     /// <summary>
     /// 搜索章节
@@ -102,16 +111,72 @@ public class ChaptersController : ControllerBase
             return BadRequest(new { error = new { code = "BAD_REQUEST", message = "chapterId 不能为空" } });
         }
 
-        var kps = CollectKnowledgePoints(_knowledgeSystem.Tree, chapterId)
+        System.Console.WriteLine($"[DEBUG] GetChapterKnowledgePoints: chapterId = {chapterId}");
+
+        // 首先从知识树收集知识点
+        List<dynamic> kps = CollectKnowledgePoints(_knowledgeSystem.Tree, chapterId)
             .Select(kp => new
             {
                 kpId = kp.KpId,
                 kp.Title,
                 Summary = string.Empty
             })
+            .Cast<dynamic>()
             .ToList();
 
+        System.Console.WriteLine($"[DEBUG] Collected {kps.Count} knowledge points from tree");
+
+        // 如果从知识树收集不到知识点，尝试从文档中构建知识点
+        if (kps.Count == 0 && _knowledgeSystem.Documents.Count > 0)
+        {
+            System.Console.WriteLine("[DEBUG] No knowledge points in tree, trying to build from documents");
+            kps = BuildKnowledgePointsFromDocuments(_knowledgeSystem.Documents, chapterId);
+            System.Console.WriteLine($"[DEBUG] Built {kps.Count} knowledge points from documents");
+        }
+
         return Ok(new { items = kps });
+    }
+
+    /// <summary>
+    /// 从文档构建知识点
+    /// </summary>
+    private static List<dynamic> BuildKnowledgePointsFromDocuments(List<Document> documents, string chapterId)
+    {
+        var result = new List<dynamic>();
+        var kpIdCounter = 0;
+
+        foreach (var doc in documents)
+        {
+            foreach (var section in doc.Sections)
+            {
+                if (section.SectionId == chapterId || section.SubSections.Any(s => s.SectionId == chapterId))
+                {
+                    // 为当前章节创建知识点
+                    result.Add(new
+                    {
+                        kpId = $"kp_{kpIdCounter++:D4}",
+                        Title = section.HeadingPath.LastOrDefault() ?? "未命名知识点",
+                        Summary = string.Empty
+                    });
+
+                    // 为子章节创建知识点
+                    foreach (var subSection in section.SubSections)
+                    {
+                        if (subSection.SectionId == chapterId || subSection.SubSections.Any(s => s.SectionId == chapterId))
+                        {
+                            result.Add(new
+                            {
+                                kpId = $"kp_{kpIdCounter++:D4}",
+                                Title = subSection.HeadingPath.LastOrDefault() ?? "未命名知识点",
+                                Summary = string.Empty
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        return result;
     }
 
     private static List<ChapterTreeNode> BuildChapterTree(KnowledgeTreeNode? node)

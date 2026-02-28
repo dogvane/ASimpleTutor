@@ -107,18 +107,18 @@ const handleSearchSelect = (item) => {
 const { onSearchInput, onSearchKeydown, watchSearch } = setupSearch(handleSearchSelect)
 
 // 选择章节后自动加载知识点和章节内容
-const handleSelectChapter = async (chapter) => {
-  selectChapter(chapter)
-  const kps = await loadKnowledgePoints(chapter.id)
-  if (kps.length > 0) {
-    await selectKp(kps[0])
+  const handleSelectChapter = async (chapter) => {
+    selectChapter(chapter)
+    const kps = await loadKnowledgePoints(chapter.id)
+    if (kps.length > 0) {
+      await selectKp(kps[0])
+    }
+    // 加载章节学习内容（暂未实现）
+    // const chapterContent = await chapterLoader.loadChapterContent(chapter.id)
+    // if (chapterContent) {
+    //   console.log('章节学习内容已加载:', chapterContent)
+    // }
   }
-  // 加载章节学习内容
-  const chapterContent = await chapterLoader.loadChapterContent(chapter.id)
-  if (chapterContent) {
-    console.log('章节学习内容已加载:', chapterContent)
-  }
-}
 
 // 刷新处理
 const handleRefresh = async (type) => {

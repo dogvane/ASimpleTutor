@@ -90,6 +90,8 @@ builder.Services.AddSingleton<IExerciseGenerator, ExerciseService>();
 builder.Services.AddSingleton<IExerciseFeedback, ExerciseService>();
 builder.Services.AddSingleton<ScanProgressService>();
 
+// 移除文件监控服务，改为通过API接口触发目录文件检查
+
 // 添加控制器支持
 builder.Services.AddControllers();
 

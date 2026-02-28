@@ -87,7 +87,7 @@ public class KnowledgePointsController : ControllerBase
         {
             id = kp!.KpId,
             title = kp.Title,
-            overview = kp.Summary ?? new Summary { Definition = "暂无内容" },
+            overview = kp.Summary,
             generatedAt = DateTime.UtcNow
         });
     }
@@ -174,27 +174,27 @@ public class KnowledgePointsController : ControllerBase
             var detailedLevel = levels.FirstOrDefault(l => l.Level == 2);
             var deepLevel = levels.FirstOrDefault(l => l.Level == 3);
 
-            responseLevels["brief"] = new { content = briefLevel?.Content ?? "", keyPoints = kp.Summary?.KeyPoints ?? new List<string>() };
-            responseLevels["detailed"] = new { content = detailedLevel?.Content ?? "", examples = new List<string>() };
-            responseLevels["deep"] = new { content = deepLevel?.Content ?? "", relatedPatterns = new List<string>(), bestPractices = new List<string>() };
+            responseLevels["brief"] = new { content = briefLevel?.Content, keyPoints = kp.Summary?.KeyPoints };
+            responseLevels["detailed"] = new { content = detailedLevel?.Content, examples = new List<string>() };
+            responseLevels["deep"] = new { content = deepLevel?.Content, relatedPatterns = new List<string>(), bestPractices = new List<string>() };
         }
         // 只返回概览层次
         else if (level == "brief")
         {
             var briefLevel = levels.FirstOrDefault(l => l.Level == 1);
-            responseLevels["brief"] = new { content = briefLevel?.Content ?? "", keyPoints = kp.Summary?.KeyPoints ?? new List<string>() };
+            responseLevels["brief"] = new { content = briefLevel?.Content, keyPoints = kp.Summary?.KeyPoints };
         }
         // 只返回详细层次
         else if (level == "detailed")
         {
             var detailedLevel = levels.FirstOrDefault(l => l.Level == 2);
-            responseLevels["detailed"] = new { content = detailedLevel?.Content ?? "", examples = new List<string>() };
+            responseLevels["detailed"] = new { content = detailedLevel?.Content, examples = new List<string>() };
         }
         // 只返回深度层次
         else if (level == "deep")
         {
             var deepLevel = levels.FirstOrDefault(l => l.Level == 3);
-            responseLevels["deep"] = new { content = deepLevel?.Content ?? "", relatedPatterns = new List<string>(), bestPractices = new List<string>() };
+            responseLevels["deep"] = new { content = deepLevel?.Content, relatedPatterns = new List<string>(), bestPractices = new List<string>() };
         }
         // 无效的 level 参数
         else
